@@ -1,0 +1,17 @@
+{
+  "name": "home-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "David Collins",
+  "license": "MIT",
+  "scripts": {
+    "start": "node src/index.js --offline"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": "v16.17.0"
+  }
+}

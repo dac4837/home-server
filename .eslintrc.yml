@@ -1,0 +1,62 @@
+env:
+  browser: true
+  es2021: true
+  node: true
+  jest: true
+extends:
+  - airbnb
+  - plugin:prettier/recommended
+  - plugin:react/recommended
+  - plugin:react-hooks/recommended
+  - plugin:jsx-a11y/recommended
+  - plugin:cypress/recommended
+  - plugin:chai-friendly/recommended
+overrides: []
+parserOptions:
+  ecmaFeatures: { 'jsx': true }
+  ecmaVersion: latest
+  sourceType: module
+plugins:
+  - prettier
+  - react
+  - cypress
+  - chai-friendly
+rules:
+  react/prop-types: off
+  array-callback-return: off
+  react/react-in-jsx-scope: off
+  space-before-function-paren: off
+  react/function-component-definition: off
+  react/destructuring-assignment: off
+  react/jsx-no-useless-fragment: off
+  react/jsx-filename-extension: off
+  consistent-return: off
+  react/jsx-props-no-spreading: off
+  comma-dangle: off
+  no-use-before-define: off
+  prefer-destructuring: 
+    - error
+    -
+      object: true
+      array: false
+  import/no-extraneous-dependencies: off
+  import/prefer-default-export: off
+  react/no-array-index-key: off
+  default-case: off
+  jsx-a11y/label-has-associated-control: off
+  jsx-a11y/click-events-have-key-events: off
+  jsx-a11y/no-noninteractive-element-interactions: off
+  no-param-reassign: off
+  jsx-a11y/no-noninteractive-tabindex: off
+  jsx-a11y/no-static-element-interactions: off
+  react-hooks/exhaustive-deps: off
+  no-console: off
+  react-lint: off
+  react/no-danger: off
+  prettier/prettier:
+    - error
+    -
+      endOfLine: auto
+settings:
+  react:
+    version: detect
