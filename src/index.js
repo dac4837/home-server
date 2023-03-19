@@ -8,14 +8,24 @@ const fs = require('fs')
 const port = process.env.PORT
 const clientDirectory = path.join(__dirname, '..', 'client')
 
+const INVALID_FILE_CHARACTERS = ['..', '/', '\\']
+
 // files
 app.get('/files/:fileName', (req, res) => {
-  const filePath = path.join(__dirname, '..', 'files', req.params['fileName'])
-  if (fs.existsSync(filePath)) {
-    res.download(filePath)
-  } else {
-    res.status(404).send('File not found')
+  const fileName = eq.params['fileName']
+
+  if(!isFilePathClean(fileName)) {
+    res.status(400).send('Bad file name')
   }
+
+  const filePath = path.join(__dirname, '..', 'files', fileName)
+  fs.access(filePath, fs.constants.F_OK, (err) => {
+    if(err) {
+      res.status(404).send('File not found')
+    } else {
+      res.download(filePath)
+    }
+  });
 })
 
 // custom redirects
@@ -31,20 +41,6 @@ app.get('/health', (req, res) => {
   res.send('UP')
 })
 
-// add all client apps from the clients directory
-// fs.readdirSync(clientsDirectory).forEach((directoryName) => {
-//   const directory = path.join(clientsDirectory, directoryName)
-//   console.log(`Adding ${directory}`)
-//   const stats = fs.statSync(directory)
-//   if (stats.isDirectory() && fs.existsSync(path.join(directory, 'index.html'))) {
-//     app.use(express.static(directory))
-
-//     app.use((req, res, next) => {
-//       res.sendFile(path.join(directory, 'index.html'))
-//     })
-//   }
-// })
-
 // client/ui
 app.use(express.static(clientDirectory))
 app.use((req, res, next) => {
@@ -55,3 +51,16 @@ app.use((req, res, next) => {
 app.listen(port, () => {
   console.log(`server started on port ${port}`)
 })
+
+function isFilePathClean(filePath) {
+  if (!filePath) return false
+
+  let isValid = true
+
+  INVALID_FILE_CHARACTERS.forEach(invalidCharacter => {
+    console.log(invalidCharacter)
+    if (filePath.includes(invalidCharacter)) isValid = false
+  })
+  
+  return isValid
+}
