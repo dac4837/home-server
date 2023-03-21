@@ -8,7 +8,7 @@ const fs = require('fs')
 const port = process.env.PORT
 const clientDirectory = path.join(__dirname, '..', 'client')
 
-const INVALID_FILE_CHARACTERS = ['..', '/', '\\']
+const INVALID_FILE_CHARACTERS = ['..', '/', '\\', '<', '>', '&']
 
 // files
 app.get('/files/:fileName', (req, res) => {
