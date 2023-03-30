@@ -11,5 +11,6 @@ yarn run build
 cd $serverDir
 rm -rf client
 mkdir -p client
+mkdir -p james-messages
 mkdir -p files
 mv ../home-server-ui/build/* client/
