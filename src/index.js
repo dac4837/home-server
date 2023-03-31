@@ -101,7 +101,6 @@ function isFilePathClean(filePath) {
   let isValid = true
 
   INVALID_FILE_CHARACTERS.forEach(invalidCharacter => {
-    console.log(invalidCharacter)
     if (filePath.includes(invalidCharacter)) isValid = false
   })
   
