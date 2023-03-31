@@ -32,7 +32,7 @@ app.use(express.urlencoded({
 
 // files
 app.get('/files/:fileName', (req, res) => {
-  const fileName = eq.params['fileName']
+  const fileName = req.params['fileName']
 
   if(!isFilePathClean(fileName)) {
     res.status(400).send('Bad file name')
