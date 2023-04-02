@@ -33,7 +33,7 @@ app.use(express.json());
 
 // files
 app.get('/files/:fileName', (req, res) => {
-  const fileName = eq.params['fileName']
+  const fileName = req.params['fileName']
 
   if(!isFilePathClean(fileName)) {
     res.status(400).send('Bad file name')
@@ -104,7 +104,6 @@ function isFilePathClean(filePath) {
   let isValid = true
 
   INVALID_FILE_CHARACTERS.forEach(invalidCharacter => {
-    console.log(invalidCharacter)
     if (filePath.includes(invalidCharacter)) isValid = false
   })
   
