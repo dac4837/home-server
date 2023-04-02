@@ -29,6 +29,7 @@ if(!process.env.MESSAGE_DIRECTORY) {
 app.use(express.urlencoded({
   extended: true
 }))
+app.use(express.json());
 
 // files
 app.get('/files/:fileName', (req, res) => {
@@ -51,18 +52,20 @@ app.get('/files/:fileName', (req, res) => {
 // james messages
 app.post(
   '/hijames',
-  body('name').isLength({ min: 2 }),
-  body('message').isLength({ min: 5 }),
+  body('name').isLength({ min: 2 }).withMessage("Please enter a valid name."),
+  body('message').isLength({ min: 5 }).withMessage("Please provide a message."),
   (req, res) => {
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.error(errors.array())
-      return res.status(400).send("Whoops something went wrong! Did you fill out the message? Click back to continue. Contact David if error persists")
+      let errorMessage =""
+
+      errors.array().forEach(error => errorMessage += error.msg + " ")
+      return res.status(400).send(errorMessage)
     }
 
     saveMessage(req.body.name, req.body.message)
-      .then(()=>res.redirect(`${req.get('referer')}?success=true`))
+      .then(()=>res.status(201).send())
       .catch(error => {
         console.error(error.message)
         return res.status(500).send("Whoops something went wrong! We couldn't save that message. Click back to continue. Contact David if error persists")
