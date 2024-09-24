@@ -15,7 +15,7 @@ var storage = multer.diskStorage({
     cb(null, Date.now() + path.extname(file.originalname)) //Appending extension
   }
 })
-const upload = multer({ storage: storage })
+const upload = multer({ storage: storage, limits: { fileSize: 20000000} })
 
 const rootDirectort = path.join(__dirname, '..')
 const clientDirectory = path.join(rootDirectort, 'client')
@@ -60,7 +60,7 @@ app.get('/files/:fileName', (req, res) => {
 })
 
 // upload
-app.post('/uploadFile', upload.single('file'), function(req, res) {
+app.post('/uploadfile', upload.single('file'), function(req, res) {
 
   res.sendStatus(200);
 });
