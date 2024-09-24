@@ -6,6 +6,16 @@ const path = require('path')
 const redirects = require('../redirects.json')
 const fs = require('fs')
 const fsPromise = require('fs/promises');
+const multer  = require('multer')
+var storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/')
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname)) //Appending extension
+  }
+})
+const upload = multer({ storage: storage })
 
 const rootDirectort = path.join(__dirname, '..')
 const clientDirectory = path.join(rootDirectort, 'client')
@@ -48,6 +58,12 @@ app.get('/files/:fileName', (req, res) => {
     }
   });
 })
+
+// upload
+app.post('/uploadFile', upload.single('file'), function(req, res) {
+
+  res.sendStatus(200);
+});
 
 // james messages
 app.post(
