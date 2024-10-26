@@ -44,5 +44,6 @@ src/index.css
 redirects.json
 files/
 client/
+santa-client/
 james-messages
 uploads

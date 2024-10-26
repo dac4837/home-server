@@ -19,6 +19,7 @@ const upload = multer({ storage: storage, limits: { fileSize: 20000000} })
 
 const rootDirectort = path.join(__dirname, '..')
 const clientDirectory = path.join(rootDirectort, 'client')
+const santaClientDirectory = path.join(rootDirectort, 'santa-client')
 const messageDirectory = path.join(rootDirectort, process.env.MESSAGE_DIRECTORY)
 
 const INVALID_FILE_CHARACTERS = ['..', '/', '\\', '<', '>', '&']
@@ -101,6 +102,12 @@ redirects.forEach((redirect) => {
 
 app.get('/health', (req, res) => {
   res.send('UP')
+})
+
+// santa ui
+app.use(express.static(santaClientDirectory))
+app.use("/santa", (req, res, next) => {
+  res.sendFile(path.join(santaClientDirectory, 'index.html'))
 })
 
 // client/ui
