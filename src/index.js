@@ -105,6 +105,96 @@ app.get('/health', (req, res) => {
 })
 
 // santa ui
+
+async function getListForElf(elfId, callback) {
+
+  const filePath = path.join(__dirname, '..', 'elves', `${elfId.toLowerCase()}.json`)
+
+  fs.readFile(filePath, callback);
+
+}
+app.get('/elf/:elfId', (req, res) => {
+  const elfId = req.params['elfId']
+
+  const filePath = path.join(__dirname, '..', 'elves', 'elves.json')
+
+  fs.readFile(filePath, function (err, data) {
+
+    if(err) {
+      res.status(500).send("unexpected error")
+    } else {
+
+      const allElves = JSON.parse(data)
+
+      const elves = allElves.filter(e => e.id === elfId)
+  
+      if (elves.length > 0) {
+  
+          elf = elves[0]
+
+          getListForElf(elf.id, function (err, data) {
+
+            elf.list = err ? [] : JSON.parse(data)
+
+            const santaObjects = allElves.filter(d => d.id === elf.santaTo);
+  
+            if (santaObjects.length > 0) {
+                elf.santaToObject = santaObjects[0]
+
+                getListForElf(elf.santaToObject.id, function (err2, data2) {
+
+                  elf.santaToObject.list = err2 ? [] : JSON.parse(data2)
+
+                  res.send(elf)
+              
+                })
+            } else {
+              res.status(500).send("Invalid elf state")
+            }
+        
+          })
+  
+      } else {
+        res.status(404).send("elf not found")
+      }
+    }
+
+  });
+
+})
+
+app.get('/elfList/:elfId', (req, res) => {
+  const elfId = req.params['elfId']
+
+  getListForElf(elfId, function (err, data) {
+
+    if(err) {
+      res.send([])
+    } else {
+        res.send(data)
+    }
+
+  })
+
+})
+
+app.put('/elfList/:elfId', (req, res) => {
+  const elfId = req.params['elfId']
+
+  const data = req.body
+
+  const filePath = path.join(__dirname, '..', 'elves', `${elfId.toLowerCase()}.json`)
+
+  fs.writeFile(filePath, JSON.stringify(data), (error) => {
+    if(error) {
+      res.status(500).send("unexpected error while saving elf list")
+    } else {
+      res.send()
+    }
+  })
+
+})
+
 app.use(express.static(santaClientDirectory))
 app.use("/santa", (req, res, next) => {
   res.sendFile(path.join(santaClientDirectory, 'index.html'))

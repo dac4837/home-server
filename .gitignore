@@ -44,6 +44,7 @@ src/index.css
 redirects.json
 files/
 client/
+elves/
 santa-client/
 james-messages
 uploads
