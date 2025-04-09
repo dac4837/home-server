@@ -8,12 +8,12 @@
     "start": "node src/index.js --offline"
   },
   "dependencies": {
-    "dotenv": "^16.0.3",
-    "express": "^4.21.1",
-    "express-validator": "^7.2.0",
-    "multer": "^1.4.5-lts.1"
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-validator": "^7.2.1",
+    "multer": "^1.4.5-lts.2"
   },
   "engines": {
-    "node": "v20.18.0"
+    "node": "v22.14.0"
   }
 }
