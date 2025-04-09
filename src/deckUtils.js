@@ -1,55 +1,52 @@
 const { JSDOM } = require('jsdom');
 const axios = require('axios');
+const fs = require('fs')
+
 
 const deckUrl = "https://tappedout.net/mtg-decks/slime-time-gary-the-snail/"
 
 const SLEEP_VALUE = 5000
-const COOLDOWN_VALUE = 2000*60
+const COOLDOWN_VALUE = 3000 * 60
 
 let requestCount = 0
 
 const headers = {
 	"User-Agent":
-	  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:137.0) Gecko/20100101 Firefox/137.0",
-  };
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:137.0) Gecko/20100101 Firefox/137.0",
+};
 
 getDeckData(deckUrl).then((deck) => {
 	console.log(deck)
+	// downloadDeckImages(deck).then(() => {
+	// 	console.log("finished downloading images")
+	// }).catch(e => {
+	// 	console.error("Error downloading images", e)
+	// })
 })
 
 async function getDeckData(deckUrl) {
 
-	console.log("trying " + SLEEP_VALUE/1000 + " seconds")
+	console.log("trying " + SLEEP_VALUE / 1000 + " seconds")
 
-	try {
+	const deckRequest = await getPage(deckUrl)
 
+	const document = getDocumentForHtml(deckRequest.data)
+	// const document = getDocumentForHtml(htmlString)
 
-		const deckRequest = await getRequest(deckUrl)
+	const mainBoard = await getMainBoardCards(document)
 
-		const document = getDocumentForHtml(deckRequest.data)
-		// const document = getDocumentForHtml(htmlString)
+	const tokens = getTokens(document)
 
-		const mainBoard = await getMainBoardCards(document)
-
-		const tokens = getTokens(document)
-
-		const commander = await getCommander(document)
+	const commander = await getCommander(document)
 
 
-		return {
-			commander,
-			mainBoard,
-			tokens
-		}
-
-	} catch (e) {
-
-		if(e.status == 429) {
-			throw new Error("Tapped out rejected requests due to too much trafic")
-		} else {
-			throw e
-		}		
+	return {
+		commander,
+		mainBoard,
+		tokens
 	}
+
+	
 }
 
 function getDocumentForHtml(html) {
@@ -74,7 +71,6 @@ async function getMainBoardCards(document) {
 	for (const card of cardLIs) {
 		const result = await createCardObject(card);
 
-		await sleep(SLEEP_VALUE) // don't want to cause rate limiting
 		results.push(result);
 	}
 
@@ -128,13 +124,15 @@ async function getCardImages(cardUrl) {
 }
 
 async function getImageData(cardUrl) {
-	const cardRequest = await getRequest(cardUrl)
+	const cardRequest = await getPage(cardUrl)
 
 	const cardDom = getDocumentForHtml(cardRequest.data)
 
 	const imageMeta = cardDom.querySelector('meta[property="og:image"]')
 
-	const imageUrl = `http${imageMeta.getAttribute("content")}`
+	const contentAttribute = imageMeta.getAttribute("content")
+
+	const imageUrl = contentAttribute.includes("https://") ? contentAttribute : `https:${contentAttribute}`
 
 	return {
 		url: imageUrl,
@@ -233,9 +231,11 @@ function getTokens(document) {
 
 	if (tokenElements) {
 		tokenElements.forEach(token => {
+
+			const imageUrl = token.getAttribute("data-image").includes("https://") ? token.getAttribute("data-image") : `https:${token.getAttribute("data-image")}`
 			tokens.push({
 				name: token.textContent?.replace(/[\r\n\t]+/g, ' '),
-				front: `https:${token.getAttribute("data-image")}`
+				front: `https:${imageUrl}`
 			})
 		})
 	}
@@ -244,42 +244,101 @@ function getTokens(document) {
 
 }
 
+async function downloadDeckImages(deck) {
+
+	const { commander, mainBoard, tokens } = deck
+	const allCards = [commander, ...mainBoard, ...tokens]
+
+	for (const card of allCards) {
+		const { front, back } = card;
+
+		await downloadImage(front);
+
+		if (back) {
+			await downloadImage(back);
+		}
+	}
+}
+
 function sleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
-  }
+}
 
-  async function getRequest(url) {
+async function getPage(url) {
 
-    requestCount++
+	console.log("getting " + url)
 
-    if (requestCount > 51) {
-        console.log("Sleeping for cooldown")
-        await sleep(COOLDOWN_VALUE)
-        requestCount = 0
-    }
+	const response = await getRequest(() => axios.get(url, {
+		headers,
+	}))
 
-    let attempt = 0
+	return response
+}
 
-    while (attempt < 5) {
-        try {
-            const response = await axios.get(url, {
-                headers,
-            })
-            requestCount++
-            await sleep(SLEEP_VALUE)
-            return response
-        } catch (e) {
-            if (e.response.status == 429) {
-                console.log("Rate limited, sleeping")
-            } else {
-                console.log("error occured, sleeping")
-                throw e
-            }
-            await sleep(COOLDOWN_VALUE)
-        }
-        attempt++
-    }
+async function downloadImage(url) {
+	const filename = url.split('/').pop();
 
-    throw new Error("Too many attempts getting data")
+	console.log("getting image " + filename + " from " + url)
 
-  }
+	const writer = fs.createWriteStream(filename);
+
+	// const response = await getRequest(() => axios({
+	// 	url,
+	// 	method: "GET",
+	// 	responseType: "stream",
+	// 	headers,
+	// }))
+
+	const response = await axios({
+			url,
+			method: "GET",
+			responseType: "stream",
+			headers,
+		})
+
+	response.data.pipe(writer);
+
+	return new Promise((resolve, reject) => {
+		writer.on("finish", resolve);
+		writer.on("error", reject);
+	});
+}
+
+async function getRequest(request) {
+	requestCount++
+
+	if (requestCount > 51) {
+		console.log("Sleeping for cooldown")
+		await sleep(COOLDOWN_VALUE)
+		requestCount = 0
+	}
+
+	let attempt = 0
+
+	while (attempt < 5) {
+		try {
+			const response = await request()
+			requestCount++
+			await sleep(SLEEP_VALUE)
+			return response
+		} catch (e) {
+			if (e.response?.status == 429) {
+				console.log("Rate limited, sleeping")
+			} else {
+				console.log("error occured, sleeping")
+				throw e
+			}
+			await sleep(COOLDOWN_VALUE)
+			requestCount = 0
+		}
+		attempt++
+	}
+
+	throw new Error("Too many attempts getting data")
+}
+
+
+//   downloadDeckImages(deckSnapshot)
+//   .then(() => {
+// 	console.log("All images downloaded successfully.");
+//   })

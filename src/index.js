@@ -21,6 +21,7 @@ const rootDirectort = path.join(__dirname, '..')
 const clientDirectory = path.join(rootDirectort, 'client')
 const santaClientDirectory = path.join(rootDirectort, 'santa-client')
 const messageDirectory = path.join(rootDirectort, process.env.MESSAGE_DIRECTORY)
+const cardCache = path.join(rootDirectort, 'card-cache.json')
 
 const INVALID_FILE_CHARACTERS = ['..', '/', '\\', '<', '>', '&']
 
@@ -90,6 +91,66 @@ app.post(
 
     },
 );
+
+// mtg card cache
+app.get('/card-cache', (req, res) => {
+  fs.readFile(cardCache, 'utf8', (err, data) => {
+    if (err) {
+      res.status(404).send('File not found');
+    } else {
+      try {
+        const jsonData = JSON.parse(data);
+        res.json(jsonData);
+      } catch (parseError) {
+        res.status(500).send('Error parsing JSON');
+      }
+    }
+  });
+
+})
+
+const isValidUrl = (str) => {
+    try {
+      new URL(str);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+app.put('/card-cache', (req, res) => {
+  const { url, front, back } = req.body;
+
+  if (typeof url !== 'string' || typeof front !== 'string' || !isValidUrl(url) || !isValidUrl(front)) {
+    return res.status(400).send('Invalid input. Properties url and front must be valid URLs.');
+  }
+
+  if (back && (!isValidUrl(back) || typeof back !== 'string')) {
+    return res.status(400).send('Invalid input. Property back must be a valid URL if provided.');
+  }
+
+  fs.readFile(cardCache, 'utf8', (err, data) => {
+    let cache = {};
+
+    if (!err) {
+      try {
+        cache = JSON.parse(data);
+      } catch (parseError) {
+        return res.status(500).send('Error parsing existing card cache.');
+      }
+    }
+
+    cache[url] = back ? { front, back } : { front };
+
+    fs.writeFile(cardCache, JSON.stringify(cache, null, 2), (writeErr) => {
+      if (writeErr) {
+        return res.status(500).send('Error saving card cache.');
+      }
+      res.sendStatus(200);
+    });
+  });
+});
+
 
 // custom redirects
 redirects.forEach((redirect) => {
