@@ -7,6 +7,7 @@ const redirects = require('../redirects.json')
 const fs = require('fs')
 const fsPromise = require('fs/promises');
 const multer  = require('multer')
+const { generateDeckJson } = require('./deckUtils');
 var storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, 'uploads/')
@@ -17,11 +18,11 @@ var storage = multer.diskStorage({
 })
 const upload = multer({ storage: storage, limits: { fileSize: 20000000} })
 
-const rootDirectort = path.join(__dirname, '..')
-const clientDirectory = path.join(rootDirectort, 'client')
-const santaClientDirectory = path.join(rootDirectort, 'santa-client')
-const messageDirectory = path.join(rootDirectort, process.env.MESSAGE_DIRECTORY)
-const cardCache = path.join(rootDirectort, 'card-cache.json')
+const rootDirectory = path.join(__dirname, '..')
+const clientDirectory = path.join(rootDirectory, 'client')
+const santaClientDirectory = path.join(rootDirectory, 'santa-client')
+const messageDirectory = path.join(rootDirectory, process.env.MESSAGE_DIRECTORY)
+const deckUrlRoot = process.env.DECK_URL_ROOT
 
 const INVALID_FILE_CHARACTERS = ['..', '/', '\\', '<', '>', '&']
 
@@ -92,22 +93,7 @@ app.post(
     },
 );
 
-// mtg card cache
-app.get('/card-cache', (req, res) => {
-  fs.readFile(cardCache, 'utf8', (err, data) => {
-    if (err) {
-      res.status(404).send('File not found');
-    } else {
-      try {
-        const jsonData = JSON.parse(data);
-        res.json(jsonData);
-      } catch (parseError) {
-        res.status(500).send('Error parsing JSON');
-      }
-    }
-  });
-
-})
+// magic stuff
 
 const isValidUrl = (str) => {
     try {
@@ -118,37 +104,26 @@ const isValidUrl = (str) => {
     }
   };
 
-app.put('/card-cache', (req, res) => {
-  const { url, front, back } = req.body;
 
-  if (typeof url !== 'string' || typeof front !== 'string' || !isValidUrl(url) || !isValidUrl(front)) {
-    return res.status(400).send('Invalid input. Properties url and front must be valid URLs.');
+app.get('/magic-json', (req, res) => {
+  const deckUrl = req.query.deckUrl;
+
+  const deckBase = `${deckUrlRoot}/mtg-decks`;
+
+  if (!deckUrl || typeof deckUrl !== 'string') {
+    return res.status(400).send('Invalid input. deckUrl is required and must be a string.');
   }
 
-  if (back && (!isValidUrl(back) || typeof back !== 'string')) {
-    return res.status(400).send('Invalid input. Property back must be a valid URL if provided.');
+  if (!isValidUrl(deckUrl) || !deckUrl.startsWith(deckBase)) {
+    return res.status(400).send(`Invalid deckUrl. It must be a valid URL starting with ${deckBase}`);
   }
 
-  fs.readFile(cardCache, 'utf8', (err, data) => {
-    let cache = {};
-
-    if (!err) {
-      try {
-        cache = JSON.parse(data);
-      } catch (parseError) {
-        return res.status(500).send('Error parsing existing card cache.');
-      }
-    }
-
-    cache[url] = back ? { front, back } : { front };
-
-    fs.writeFile(cardCache, JSON.stringify(cache, null, 2), (writeErr) => {
-      if (writeErr) {
-        return res.status(500).send('Error saving card cache.');
-      }
-      res.sendStatus(200);
+  generateDeckJson(deckUrl)
+    .then((deckJson) => res.json(deckJson))
+    .catch((error) => {
+      console.error(error.message);
+      res.status(500).send('Error generating Deck JSON.');
     });
-  });
 });
 
 

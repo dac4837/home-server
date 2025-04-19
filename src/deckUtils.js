@@ -1,28 +1,70 @@
 const { JSDOM } = require('jsdom');
 const axios = require('axios');
-const fs = require('fs')
+const fs = require('fs');
+const path = require('path');
+const cardCache = path.join(__dirname, '..', 'card-cache.json');
 
+const deckUrlRoot = process.env.DECK_URL_ROOT;
 
-const deckUrl = "https://tappedout.net/mtg-decks/slime-time-gary-the-snail/"
+const deckUrl = deckUrlRoot + "/mtg-decks/slime-time-gary-the-snail/";
 
-const SLEEP_VALUE = 5000
-const COOLDOWN_VALUE = 3000 * 60
+const SLEEP_VALUE = 5000;
+const COOLDOWN_VALUE = 3000 * 60;
 
-let requestCount = 0
+let requestCount = 0;
+let imageCache = {};
 
 const headers = {
 	"User-Agent":
 		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:137.0) Gecko/20100101 Firefox/137.0",
 };
 
-getDeckData(deckUrl).then((deck) => {
-	console.log(deck)
-	// downloadDeckImages(deck).then(() => {
-	// 	console.log("finished downloading images")
-	// }).catch(e => {
-	// 	console.error("Error downloading images", e)
-	// })
-})
+async function generateDeckJson(input) {
+
+	await loadCache();
+
+	const deckData = await getDeckData(input);
+
+	const deckJson = convertToTableTop(deckData);
+
+	resetRequestCount();
+
+	return deckJson;
+}
+
+function resetRequestCount() {
+	sleep(COOLDOWN_VALUE).then(() => {
+		requestCount = 0;
+	});
+}
+function loadCache() {
+	return new Promise((resolve, reject) => {
+		fs.readFile(cardCache, 'utf8', (err, data) => {
+			if (err) {
+				console.error('Error reading card cache file');
+				reject(err);
+			} else {
+				try {
+					imageCache = JSON.parse(data);
+					resolve();
+				} catch (parseError) {
+					console.error('Error parsing JSON');
+					reject();
+				}
+			}
+		});
+	});
+}
+
+function addToCache(url, images) {
+	imageCache[url] = images
+
+	fs.writeFile(cardCache, JSON.stringify(imageCache, null, 2), (writeErr) => {
+		  if (writeErr) {
+			console.error('Error saving card cache.');
+		  }
+		});
+}
 
 async function getDeckData(deckUrl) {
 
@@ -91,7 +133,7 @@ async function createCardObject(card) {
 		throw new Error("invalid card data")
 	}
 
-	const cardUrl = `https://tappedout.net/mtg-card/${cardSlug}`
+	const cardUrl = `${deckUrlRoot}/mtg-card/${cardSlug}`
 
 	const images = await getCardImages(cardUrl)
 
@@ -105,6 +147,10 @@ async function createCardObject(card) {
 
 async function getCardImages(cardUrl) {
 
+	if (imageCache[cardUrl]) {
+		return imageCache[cardUrl]
+	}
+
 	const { url, dom } = await getImageData(cardUrl)
 
 	const cardBackUrl = getCardBackUrl(dom)
@@ -116,10 +162,14 @@ async function getCardImages(cardUrl) {
 		backImageUrl = backData.url
 	}
 
-	return {
+	const images = {
 		front: url,
 		back: backImageUrl
 	}
+
+	addToCache(cardUrl, images)
+
+	return images
 
 }
 
@@ -146,7 +196,7 @@ function getCardBackUrl(document) {
 
 	let url
 	const headings = [...document.querySelectorAll("h4")];
-	const backHeading = headings.find(h => h.textContent.trim() === "Back:");
+	const backHeading = headings.find(h => h.textContent.trim() === "Back:" || h.textContent.trim() === "Front:");
 
 	if (backHeading) {
 
@@ -159,7 +209,7 @@ function getCardBackUrl(document) {
 		}
 
 		if (link) {
-			url = `https://tappedout.net/${link.getAttribute("data-url")}`
+			url = `${deckUrlRoot}/${link.getAttribute("data-url")}`
 		}
 	}
 
@@ -211,7 +261,7 @@ async function createCommanderObject(aElement) {
 	if (!name || !cardRelativeUrl) {
 		throw new Error("Error getting commander info")
 	}
-	const cardUrl = `https://tappedout.net${cardRelativeUrl}`
+	const cardUrl = `${deckUrlRoot}${cardRelativeUrl}`
 
 	const images = await getCardImages(cardUrl)
 
@@ -235,7 +285,7 @@ function getTokens(document) {
 			const imageUrl = token.getAttribute("data-image").includes("https://") ? token.getAttribute("data-image") : `https:${token.getAttribute("data-image")}`
 			tokens.push({
 				name: token.textContent?.replace(/[\r\n\t]+/g, ' '),
-				front: `https:${imageUrl}`
+				front: imageUrl
 			})
 		})
 	}
@@ -244,21 +294,6 @@ function getTokens(document) {
 
 }
 
-async function downloadDeckImages(deck) {
-
-	const { commander, mainBoard, tokens } = deck
-	const allCards = [commander, ...mainBoard, ...tokens]
-
-	for (const card of allCards) {
-		const { front, back } = card;
-
-		await downloadImage(front);
-
-		if (back) {
-			await downloadImage(back);
-		}
-	}
-}
 
 function sleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
@@ -275,39 +310,11 @@ async function getPage(url) {
 	return response
 }
 
-async function downloadImage(url) {
-	const filename = url.split('/').pop();
-
-	console.log("getting image " + filename + " from " + url)
-
-	const writer = fs.createWriteStream(filename);
-
-	// const response = await getRequest(() => axios({
-	// 	url,
-	// 	method: "GET",
-	// 	responseType: "stream",
-	// 	headers,
-	// }))
-
-	const response = await axios({
-			url,
-			method: "GET",
-			responseType: "stream",
-			headers,
-		})
-
-	response.data.pipe(writer);
-
-	return new Promise((resolve, reject) => {
-		writer.on("finish", resolve);
-		writer.on("error", reject);
-	});
-}
 
 async function getRequest(request) {
 	requestCount++
 
-	if (requestCount > 51) {
+	if (requestCount > 50) {
 		console.log("Sleeping for cooldown")
 		await sleep(COOLDOWN_VALUE)
 		requestCount = 0
@@ -337,8 +344,104 @@ async function getRequest(request) {
 	throw new Error("Too many attempts getting data")
 }
 
+function convertToTableTop(deckData) {
+	const deck = {
+		ObjectStates: []
+	};
 
-//   downloadDeckImages(deckSnapshot)
-//   .then(() => {
-// 	console.log("All images downloaded successfully.");
-//   })
+	let pileNumber = 0;
+
+	const createContainedObjectsEntry = (card, id) => ({
+		CardID: id,
+		Name: "Card",
+		Nickname: card.name,
+		Transform: {
+			posX: 0,
+			posY: 0,
+			posZ: 0,
+			rotX: 0,
+			rotY: 180,
+			rotZ: 180,
+			scaleX: 1,
+			scaleY: 1,
+			scaleZ: 1
+		}
+	});
+
+	const createCustomDeckEntry = (card, id, useBack = false) => ({
+		[id]: {
+			FaceURL: card.front,
+			BackURL: useBack ? card.back : "https://i.imgur.com/Hg8CwwU.jpeg",
+			NumHeight: 1,
+			NumWidth: 1,
+			BackIsHidden: true
+		}
+	});
+
+	const createTransform = (i, faceup) => {
+		return {
+			posX: i * 2.2,
+			posY: 1,
+			posZ: 0,
+			rotX: 0,
+			rotY: 180,
+			rotZ: faceup ? 0 : 180,
+			scaleX: 1,
+			scaleY: 1,
+			scaleZ: 1
+		};
+	}
+
+	const createPile = (cards, pipeNumber, options = {faceUp: false, useBack: false}) => {
+
+		const customDeck = {};
+		const containedObjects = cards.map((card, i) => createContainedObjectsEntry(card, 100*(i+1)));
+		const deckIDs = containedObjects.map(obj => obj.CardID);
+
+		let i = 1;
+
+		for (const card of cards) {
+			Object.assign(customDeck, createCustomDeckEntry(card, i++, options.useBack));
+		}
+
+		const transform = createTransform(pipeNumber, options.faceUp);
+
+		return {
+			Name: "DeckCustom",
+			ContainedObjects: containedObjects,
+			DeckIDs: deckIDs,
+			CustomDeck: customDeck,
+			Transform: transform
+		};
+	}
+
+	const createSingleCardPipe = (card, pipeNumber) => {
+		const customDeck = createCustomDeckEntry(card, 1);
+
+		return {
+			Name: "Card",
+			CustomDeck: customDeck,
+			CardID: 100,
+			Nickname: card.name,
+			Transform: createTransform(pipeNumber, true)
+		};
+	}
+
+	deck.ObjectStates.push(createPile(deckData.mainBoard, pileNumber++));
+	deck.ObjectStates.push(createSingleCardPipe(deckData.commander, pileNumber++));
+	deck.ObjectStates.push(createPile(deckData.tokens, pileNumber++, {faceUp: true}));
+
+	const cardsWithBacks = deckData.mainBoard.filter(card => card.back);
+
+	if (cardsWithBacks.length > 0) {
+		deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, {faceUp: true, useBack: true}));
+
+	}
+
+
+	return deck;
+}
+
+module.exports = {
+	generateDeckJson
+};
