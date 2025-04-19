@@ -58,10 +58,10 @@ function addToCache(url, images) {
 	imageCache[url] = images
 
 	fs.writeFile(cardCache, JSON.stringify(imageCache, null, 2), (writeErr) => {
-		  if (writeErr) {
+		if (writeErr) {
 			console.error('Error saving card cache.');
-		  }
-		});
+		}
+	});
 }
 
 async function getDeckData(deckUrl) {
@@ -83,7 +83,7 @@ async function getDeckData(deckUrl) {
 		tokens
 	}
 
-	
+
 }
 
 function getDocumentForHtml(html) {
@@ -387,10 +387,10 @@ function convertToTableTop(deckData) {
 		};
 	}
 
-	const createPile = (cards, pipeNumber, options = {faceUp: false, useBack: false}) => {
+	const createPile = (cards, pipeNumber, options = { faceUp: false, useBack: false }) => {
 
 		const customDeck = {};
-		const containedObjects = cards.map((card, i) => createContainedObjectsEntry(card, 100*(i+1)));
+		const containedObjects = cards.map((card, i) => createContainedObjectsEntry(card, 100 * (i + 1)));
 		const deckIDs = containedObjects.map(obj => obj.CardID);
 
 		let i = 1;
@@ -424,12 +424,12 @@ function convertToTableTop(deckData) {
 
 	deck.ObjectStates.push(createPile(deckData.mainBoard, pileNumber++));
 	deck.ObjectStates.push(createSingleCardPipe(deckData.commander, pileNumber++));
-	deck.ObjectStates.push(createPile(deckData.tokens, pileNumber++, {faceUp: true}));
+	deck.ObjectStates.push(createPile(deckData.tokens, pileNumber++, { faceUp: true }));
 
 	const cardsWithBacks = deckData.mainBoard.filter(card => card.back);
 
 	if (cardsWithBacks.length > 0) {
-		deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, {faceUp: true, useBack: true}));
+		deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, { faceUp: true, useBack: true }));
 
 	}
 
