@@ -6,8 +6,6 @@ const cardCache = path.join(__dirname, '..', 'card-cache.json');
 
 const deckUrlRoot = process.env.DECK_URL_ROOT;
 
-const deckUrl = deckUrlRoot + "/mtg-decks/slime-time-gary-the-snail/";
-
 const SLEEP_VALUE = 5000;
 const COOLDOWN_VALUE = 3000 * 60;
 
@@ -68,12 +66,9 @@ function addToCache(url, images) {
 
 async function getDeckData(deckUrl) {
 
-	console.log("trying " + SLEEP_VALUE / 1000 + " seconds")
-
 	const deckRequest = await getPage(deckUrl)
 
 	const document = getDocumentForHtml(deckRequest.data)
-	// const document = getDocumentForHtml(htmlString)
 
 	const mainBoard = await getMainBoardCards(document)
 
