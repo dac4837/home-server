@@ -1,72 +1,20 @@
 const { JSDOM } = require('jsdom');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const cardCache = path.join(__dirname, '..', 'card-cache.json');
 
-const deckUrlRoot = process.env.DECK_URL_ROOT;
-
-const SLEEP_VALUE = 5000;
-const COOLDOWN_VALUE = 3000 * 60;
-
-let requestCount = 0;
-let imageCache = {};
-
-const headers = {
-	"User-Agent":
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:137.0) Gecko/20100101 Firefox/137.0",
-};
+const imageApi = process.env.CARD_IMAGE_API;
 
 async function generateDeckJson(input) {
-
-	await loadCache();
 
 	const deckData = await getDeckData(input);
 
 	const deckJson = convertToTableTop(deckData);
 
-	resetRequestCount();
-
 	return deckJson;
-}
-
-function resetRequestCount() {
-	sleep(COOLDOWN_VALUE).then(() => {
-		requestCount = 0;
-	});
-}
-function loadCache() {
-	return new Promise((resolve, reject) => {
-		fs.readFile(cardCache, 'utf8', (err, data) => {
-			if (err) {
-				console.error('Error reading card cache file');
-				reject(err);
-			} else {
-				try {
-					imageCache = JSON.parse(data);
-					resolve();
-				} catch (parseError) {
-					console.error('Error parsing JSON');
-					reject();
-				}
-			}
-		});
-	});
-}
-
-function addToCache(url, images) {
-	imageCache[url] = images
-
-	fs.writeFile(cardCache, JSON.stringify(imageCache, null, 2), (writeErr) => {
-		if (writeErr) {
-			console.error('Error saving card cache.');
-		}
-	});
 }
 
 async function getDeckData(deckUrl) {
 
-	const deckRequest = await getPage(deckUrl)
+	const deckRequest = await axios.get(deckUrl)
 
 	const document = getDocumentForHtml(deckRequest.data)
 
@@ -82,8 +30,6 @@ async function getDeckData(deckUrl) {
 		mainBoard,
 		tokens
 	}
-
-
 }
 
 function getDocumentForHtml(html) {
@@ -117,20 +63,16 @@ async function getMainBoardCards(document) {
 async function createCardObject(card) {
 	const cardAElement = card.querySelector('a[data-qty]');
 
-	const cardSlug = cardAElement.getAttribute('data-slug')
-
 	const name = cardAElement.getAttribute('data-name')
 
 	const quantity = parseInt(cardAElement.getAttribute('data-qty'), 10)
 
 
-	if (!cardAElement || !cardSlug || !name || !quantity) {
+	if (!cardAElement || !name || !quantity) {
 		throw new Error("invalid card data")
 	}
 
-	const cardUrl = `${deckUrlRoot}/mtg-card/${cardSlug}`
-
-	const images = await getCardImages(cardUrl)
+	const images = await getCardImages(name)
 
 
 	return {
@@ -140,75 +82,25 @@ async function createCardObject(card) {
 	};
 }
 
-async function getCardImages(cardUrl) {
+function imageSearchUrl(cardName) {
 
-	if (imageCache[cardUrl]) {
-		return imageCache[cardUrl]
-	}
-
-	const { url, dom } = await getImageData(cardUrl)
-
-	const cardBackUrl = getCardBackUrl(dom)
-
-	let backImageUrl
-
-	if (cardBackUrl) {
-		const backData = await getImageData(cardBackUrl)
-		backImageUrl = backData.url
-	}
-
-	const images = {
-		front: url,
-		back: backImageUrl
-	}
-
-	addToCache(cardUrl, images)
-
-	return images
+    return `${imageApi}${cardName.replace(/ /g, '+')}`
 
 }
+async function getCardImages(cardName) {
 
-async function getImageData(cardUrl) {
-	const cardRequest = await getPage(cardUrl)
+    const imageDataResponse = await axios.get(imageSearchUrl(cardName))
 
-	const cardDom = getDocumentForHtml(cardRequest.data)
+    const imageData = imageDataResponse.data
 
-	const imageMeta = cardDom.querySelector('meta[property="og:image"]')
-
-	const contentAttribute = imageMeta.getAttribute("content")
-
-	const imageUrl = contentAttribute.includes("https://") ? contentAttribute : `https:${contentAttribute}`
-
-	return {
-		url: imageUrl,
-		dom: cardDom
-	}
-
-}
-
-
-function getCardBackUrl(document) {
-
-	let url
-	const headings = [...document.querySelectorAll("h4")];
-	const backHeading = headings.find(h => h.textContent.trim() === "Back:" || h.textContent.trim() === "Front:");
-
-	if (backHeading) {
-
-		let next = backHeading?.nextElementSibling;
-		let link = null;
-
-		while (next && !link) {
-			link = next.querySelector?.('a') || null;
-			next = next.nextElementSibling;
-		}
-
-		if (link) {
-			url = `${deckUrlRoot}/${link.getAttribute("data-url")}`
-		}
-	}
-
-	return url
+    const images = imageData.card_faces && imageData.card_faces.length > 1 ? {
+        front: imageData.card_faces[0].image_uris.large,
+        back: imageData.card_faces[1].image_uris.large
+    } : {
+        front: imageData.image_uris.large,
+        back: null
+    }
+    return images
 }
 
 async function getCommander(document) {
@@ -251,14 +143,11 @@ function getCommanderAElement(h3Elements) {
 
 async function createCommanderObject(aElement) {
 	const name = aElement.getAttribute('data-name')
-	const cardRelativeUrl = aElement.getAttribute('data-url')
 
-	if (!name || !cardRelativeUrl) {
+	if (!name) {
 		throw new Error("Error getting commander info")
 	}
-	const cardUrl = `${deckUrlRoot}${cardRelativeUrl}`
-
-	const images = await getCardImages(cardUrl)
+	const images = await getCardImages(name)
 
 	return {
 		name,
@@ -289,55 +178,6 @@ function getTokens(document) {
 
 }
 
-
-function sleep(ms) {
-	return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function getPage(url) {
-
-	console.log("getting " + url)
-
-	const response = await getRequest(() => axios.get(url, {
-		headers,
-	}))
-
-	return response
-}
-
-
-async function getRequest(request) {
-	requestCount++
-
-	if (requestCount > 50) {
-		console.log("Sleeping for cooldown")
-		await sleep(COOLDOWN_VALUE)
-		requestCount = 0
-	}
-
-	let attempt = 0
-
-	while (attempt < 5) {
-		try {
-			const response = await request()
-			requestCount++
-			await sleep(SLEEP_VALUE)
-			return response
-		} catch (e) {
-			if (e.response?.status == 429) {
-				console.log("Rate limited, sleeping")
-			} else {
-				console.log("error occured, sleeping")
-				throw e
-			}
-			await sleep(COOLDOWN_VALUE)
-			requestCount = 0
-		}
-		attempt++
-	}
-
-	throw new Error("Too many attempts getting data")
-}
 
 function convertToTableTop(deckData) {
 	const deck = {
@@ -390,14 +230,22 @@ function convertToTableTop(deckData) {
 	const createPile = (cards, pipeNumber, options = { faceUp: false, useBack: false }) => {
 
 		const customDeck = {};
-		const containedObjects = cards.map((card, i) => createContainedObjectsEntry(card, 100 * (i + 1)));
-		const deckIDs = containedObjects.map(obj => obj.CardID);
-
+		const containedObjects = []
+		
 		let i = 1;
 
 		for (const card of cards) {
-			Object.assign(customDeck, createCustomDeckEntry(card, i++, options.useBack));
+
+            const cardCount = card.quantity || 1;
+
+            for (let j = 0; j < cardCount; j++) {
+                Object.assign(customDeck, createCustomDeckEntry(card, i, options.useBack));
+                containedObjects.push(createContainedObjectsEntry(card, 100 * i));
+                i++;
+            }
 		}
+
+        const deckIDs = containedObjects.map(obj => obj.CardID);
 
 		const transform = createTransform(pipeNumber, options.faceUp);
 
@@ -432,7 +280,6 @@ function convertToTableTop(deckData) {
 		deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, { faceUp: true, useBack: true }));
 
 	}
-
 
 	return deck;
 }
