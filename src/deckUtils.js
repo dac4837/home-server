@@ -5,81 +5,81 @@ const imageApi = process.env.CARD_IMAGE_API;
 
 async function generateDeckJson(input) {
 
-	const deckData = await getDeckData(input);
+    const deckData = await getDeckData(input);
 
-	const deckJson = convertToTableTop(deckData);
+    const deckJson = convertToTableTop(deckData);
 
-	return deckJson;
+    return deckJson;
 }
 
 async function getDeckData(deckUrl) {
 
-	const deckRequest = await axios.get(deckUrl)
+    const deckRequest = await axios.get(deckUrl)
 
-	const document = getDocumentForHtml(deckRequest.data)
+    const document = getDocumentForHtml(deckRequest.data)
 
-	const mainBoard = await getMainBoardCards(document)
+    const mainBoard = await getMainBoardCards(document)
 
-	const tokens = getTokens(document)
+    const tokens = getTokens(document)
 
-	const commander = await getCommander(document)
+    const commander = await getCommander(document)
 
 
-	return {
-		commander,
-		mainBoard,
-		tokens
-	}
+    return {
+        commander,
+        mainBoard,
+        tokens
+    }
 }
 
 function getDocumentForHtml(html) {
-	const dom = new JSDOM(html);
-	return dom.window.document;
+    const dom = new JSDOM(html);
+    return dom.window.document;
 }
 
 async function getMainBoardCards(document) {
-	const cardLINodes = document.querySelectorAll('li.member[id^="boardContainer-main"]');
+    const cardLINodes = document.querySelectorAll('li.member[id^="boardContainer-main"]');
 
-	if (!cardLINodes || !cardLINodes.length) {
-		throw new Error("Cannot find cards")
-	}
+    if (!cardLINodes || !cardLINodes.length) {
+        throw new Error("Cannot find cards")
+    }
 
-	const cardLIs = [];
-	cardLINodes.forEach(card =>
-		cardLIs.push(card)
-	);
+    const cardLIs = [];
+    cardLINodes.forEach(card =>
+        cardLIs.push(card)
+    );
 
-	const results = [];
+    const results = [];
 
-	for (const card of cardLIs) {
-		const result = await createCardObject(card);
+    for (const card of cardLIs) {
+        const result = await createCardObject(card);
 
-		results.push(result);
-	}
+        results.push(result);
+    }
 
-	return results
+    return results
 }
 
 async function createCardObject(card) {
-	const cardAElement = card.querySelector('a[data-qty]');
+    const cardAElement = card.querySelector('a[data-qty]');
 
-	const name = cardAElement.getAttribute('data-name')
+    const name = cardAElement.getAttribute('data-name')
 
-	const quantity = parseInt(cardAElement.getAttribute('data-qty'), 10)
-
-
-	if (!cardAElement || !name || !quantity) {
-		throw new Error("invalid card data")
-	}
-
-	const images = await getCardImages(name)
+    const quantity = parseInt(cardAElement.getAttribute('data-qty'), 10)
 
 
-	return {
-		name,
-		quantity,
-		...images
-	};
+    if (!cardAElement || !name || !quantity) {
+        throw new Error("invalid card data")
+    }
+
+    const images = await getCardImages(name)
+
+
+    return {
+        name,
+        quantity,
+        ...images
+    };
 }
 
 function imageSearchUrl(cardName) {
@@ -87,154 +87,162 @@ function imageSearchUrl(cardName) {
     return `${imageApi}${cardName.replace(/ /g, '+')}`
 
 }
+
+function getImagesFromCardData(cardData) {
+
+    let images = {}
+
+    if (cardData.card_faces && cardData.card_faces.length > 1 && cardData.card_faces[0].image_uris && cardData.card_faces[1].image_uris) {
+        images.front = cardData.card_faces[0].image_uris.large
+        images.back = cardData.card_faces[1].image_uris.large
+    } else {
+        images.front = cardData.image_uris.large
+        images.back = null
+    }
+
+    return images
+
+}
+
 async function getCardImages(cardName) {
 
     const imageDataResponse = await axios.get(imageSearchUrl(cardName))
 
-    const imageData = imageDataResponse.data
-
-    const images = imageData.card_faces && imageData.card_faces.length > 1 ? {
-        front: imageData.card_faces[0].image_uris.large,
-        back: imageData.card_faces[1].image_uris.large
-    } : {
-        front: imageData.image_uris.large,
-        back: null
-    }
-    return images
+    return getImagesFromCardData(imageDataResponse.data)
 }
 
 async function getCommander(document) {
 
-	let commander
-	const h3Elements = document.querySelectorAll("h3");
+    let commander
+    const h3Elements = document.querySelectorAll("h3");
 
-	let targetA = getCommanderAElement(h3Elements)
+    let targetA = getCommanderAElement(h3Elements)
 
-	if (targetA) {
-		commander = await createCommanderObject(targetA)
-	} else {
-		console.log("No commander card found")
-	}
+    if (targetA) {
+        commander = await createCommanderObject(targetA)
+    } else {
+        console.log("No commander card found")
+    }
 
-	return commander
+    return commander
 
 }
 
 function getCommanderAElement(h3Elements) {
-	let targetA = null;
+    let targetA = null;
 
-	for (let h3 of h3Elements) {
-		if (h3.textContent.includes("Commander")) {
-			let next = h3.nextElementSibling;
-			while (next && !targetA) {
-				const aTag = next.querySelector("a");
-				if (aTag) {
-					targetA = aTag;
-					break;
-				}
-				next = next.nextElementSibling;
-			}
-			break;
-		}
-	}
+    for (let h3 of h3Elements) {
+        if (h3.textContent.includes("Commander")) {
+            let next = h3.nextElementSibling;
+            while (next && !targetA) {
+                const aTag = next.querySelector("a");
+                if (aTag) {
+                    targetA = aTag;
+                    break;
+                }
+                next = next.nextElementSibling;
+            }
+            break;
+        }
+    }
 
-	return targetA
+    return targetA
 }
 
 async function createCommanderObject(aElement) {
-	const name = aElement.getAttribute('data-name')
+    const name = aElement.getAttribute('data-name')
 
-	if (!name) {
-		throw new Error("Error getting commander info")
-	}
-	const images = await getCardImages(name)
+    if (!name) {
+        throw new Error("Error getting commander info")
+    }
+    const images = await getCardImages(name)
 
-	return {
-		name,
-		...images
-	}
+    return {
+        name,
+        ...images
+    }
 }
 
 function getTokens(document) {
 
-	const tokens = []
+    const tokens = []
 
-	const deckDetails = document.querySelector("#deck-details")
+    const deckDetails = document.querySelector("#deck-details")
 
-	const tokenElements = deckDetails?.querySelectorAll(".card-token a")
+    const tokenElements = deckDetails?.querySelectorAll(".card-token a")
 
-	if (tokenElements) {
-		tokenElements.forEach(token => {
+    if (tokenElements) {
+        tokenElements.forEach(token => {
 
-			const imageUrl = token.getAttribute("data-image").includes("https://") ? token.getAttribute("data-image") : `https:${token.getAttribute("data-image")}`
-			tokens.push({
-				name: token.textContent?.replace(/[\r\n\t]+/g, ' '),
-				front: imageUrl
-			})
-		})
-	}
+            const imageUrl = token.getAttribute("data-image").includes("https://") ? token.getAttribute("data-image") : `https:${token.getAttribute("data-image")}`
+            tokens.push({
+                name: token.textContent?.replace(/[\r\n\t]+/g, ' '),
+                front: imageUrl
+            })
+        })
+    }
 
-	return tokens
+    return tokens
 
 }
 
 
 function convertToTableTop(deckData) {
-	const deck = {
-		ObjectStates: []
-	};
+    const deck = {
+        ObjectStates: []
+    };
 
-	let pileNumber = 0;
+    let pileNumber = 0;
 
-	const createContainedObjectsEntry = (card, id) => ({
-		CardID: id,
-		Name: "Card",
-		Nickname: card.name,
-		Transform: {
-			posX: 0,
-			posY: 0,
-			posZ: 0,
-			rotX: 0,
-			rotY: 180,
-			rotZ: 180,
-			scaleX: 1,
-			scaleY: 1,
-			scaleZ: 1
-		}
-	});
+    const createContainedObjectsEntry = (card, id) => ({
+        CardID: id,
+        Name: "Card",
+        Nickname: card.name,
+        Transform: {
+            posX: 0,
+            posY: 0,
+            posZ: 0,
+            rotX: 0,
+            rotY: 180,
+            rotZ: 180,
+            scaleX: 1,
+            scaleY: 1,
+            scaleZ: 1
+        }
+    });
 
-	const createCustomDeckEntry = (card, id, useBack = false) => ({
-		[id]: {
-			FaceURL: card.front,
-			BackURL: useBack ? card.back : "https://i.imgur.com/Hg8CwwU.jpeg",
-			NumHeight: 1,
-			NumWidth: 1,
-			BackIsHidden: true
-		}
-	});
+    const createCustomDeckEntry = (card, id, useBack = false) => ({
+        [id]: {
+            FaceURL: card.front,
+            BackURL: useBack ? card.back : "https://i.imgur.com/Hg8CwwU.jpeg",
+            NumHeight: 1,
+            NumWidth: 1,
+            BackIsHidden: true
+        }
+    });
 
-	const createTransform = (i, faceup) => {
-		return {
-			posX: i * 2.2,
-			posY: 1,
-			posZ: 0,
-			rotX: 0,
-			rotY: 180,
-			rotZ: faceup ? 0 : 180,
-			scaleX: 1,
-			scaleY: 1,
-			scaleZ: 1
-		};
-	}
+    const createTransform = (i, faceup) => {
+        return {
+            posX: i * 2.2,
+            posY: 1,
+            posZ: 0,
+            rotX: 0,
+            rotY: 180,
+            rotZ: faceup ? 0 : 180,
+            scaleX: 1,
+            scaleY: 1,
+            scaleZ: 1
+        };
+    }
 
-	const createPile = (cards, pipeNumber, options = { faceUp: false, useBack: false }) => {
+    const createPile = (cards, pipeNumber, options = { faceUp: false, useBack: false }) => {
 
-		const customDeck = {};
-		const containedObjects = []
-		
-		let i = 1;
+        const customDeck = {};
+        const containedObjects = []
 
-		for (const card of cards) {
+        let i = 1;
+
+        for (const card of cards) {
 
             const cardCount = card.quantity || 1;
 
@@ -243,47 +251,47 @@ function convertToTableTop(deckData) {
                 containedObjects.push(createContainedObjectsEntry(card, 100 * i));
                 i++;
             }
-		}
+        }
 
         const deckIDs = containedObjects.map(obj => obj.CardID);
 
-		const transform = createTransform(pipeNumber, options.faceUp);
+        const transform = createTransform(pipeNumber, options.faceUp);
 
-		return {
-			Name: "DeckCustom",
-			ContainedObjects: containedObjects,
-			DeckIDs: deckIDs,
-			CustomDeck: customDeck,
-			Transform: transform
-		};
-	}
+        return {
+            Name: "DeckCustom",
+            ContainedObjects: containedObjects,
+            DeckIDs: deckIDs,
+            CustomDeck: customDeck,
+            Transform: transform
+        };
+    }
 
-	const createSingleCardPipe = (card, pipeNumber) => {
-		const customDeck = createCustomDeckEntry(card, 1);
+    const createSingleCardPipe = (card, pipeNumber) => {
+        const customDeck = createCustomDeckEntry(card, 1);
 
-		return {
-			Name: "Card",
-			CustomDeck: customDeck,
-			CardID: 100,
-			Nickname: card.name,
-			Transform: createTransform(pipeNumber, true)
-		};
-	}
+        return {
+            Name: "Card",
+            CustomDeck: customDeck,
+            CardID: 100,
+            Nickname: card.name,
+            Transform: createTransform(pipeNumber, true)
+        };
+    }
 
-	deck.ObjectStates.push(createPile(deckData.mainBoard, pileNumber++));
-	deck.ObjectStates.push(createSingleCardPipe(deckData.commander, pileNumber++));
-	deck.ObjectStates.push(createPile(deckData.tokens, pileNumber++, { faceUp: true }));
+    deck.ObjectStates.push(createPile(deckData.mainBoard, pileNumber++));
+    deck.ObjectStates.push(createSingleCardPipe(deckData.commander, pileNumber++));
+    deck.ObjectStates.push(createPile(deckData.tokens, pileNumber++, { faceUp: true }));
 
-	const cardsWithBacks = deckData.mainBoard.filter(card => card.back);
+    const cardsWithBacks = deckData.mainBoard.filter(card => card.back);
 
-	if (cardsWithBacks.length > 0) {
-		deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, { faceUp: true, useBack: true }));
+    if (cardsWithBacks.length > 0) {
+        deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, { faceUp: true, useBack: true }));
 
-	}
+    }
 
-	return deck;
+    return deck;
 }
 
 module.exports = {
-	generateDeckJson
+    generateDeckJson
 };
