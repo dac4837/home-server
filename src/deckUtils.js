@@ -1,9 +1,16 @@
 const { JSDOM } = require('jsdom');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const cardCache = path.join(__dirname, '..', 'card-cache.json');
 
 const imageApi = process.env.CARD_IMAGE_API;
 
+let imageCache = {};
+
 async function generateDeckJson(input) {
+
+    await loadCache();
 
     const deckData = await getDeckData(input);
 
@@ -30,6 +37,40 @@ async function getDeckData(deckUrl) {
         mainBoard,
         tokens
     }
+}
+
+function loadCache() {
+
+    return new Promise((resolve, reject) => {
+
+        fs.readFile(cardCache, 'utf8', (err, data) => {
+
+            if (err) {
+                console.error('Error reading card cache file');
+                reject(err);
+            } else {
+                try {
+                    imageCache = JSON.parse(data);
+                    resolve();
+                } catch (parseError) {
+                    console.error('Error parsing JSON');
+                    reject();
+                }
+            }
+        });
+
+    });
+}
+
+
+function addToCache(name, images) {
+    imageCache[name] = images
+
+    fs.writeFile(cardCache, JSON.stringify(imageCache, null, 2), (writeErr) => {
+        if (writeErr) {
+            console.error('Error saving card cache.');
+        }
+    });
 }
 
 function getDocumentForHtml(html) {
@@ -106,9 +147,17 @@ function getImagesFromCardData(cardData) {
 
 async function getCardImages(cardName) {
 
+    if (imageCache[cardName]) {
+		return imageCache[cardName]
+	}
+
     const imageDataResponse = await axios.get(imageSearchUrl(cardName))
 
-    return getImagesFromCardData(imageDataResponse.data)
+    const images = getImagesFromCardData(imageDataResponse.data)
+
+    addToCache(cardName, images)
+
+    return images
 }
 
 async function getCommander(document) {
