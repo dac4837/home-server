@@ -328,7 +328,9 @@ function convertToTableTop(deckData) {
     }
 
     deck.ObjectStates.push(createPile(deckData.mainBoard, pileNumber++));
-    deck.ObjectStates.push(createSingleCardPipe(deckData.commander, pileNumber++));
+    if(deckData.commander) {
+        deck.ObjectStates.push(createSingleCardPipe(deckData.commander, pileNumber++));
+    }
     deck.ObjectStates.push(createPile(deckData.tokens, pileNumber++, { faceUp: true }));
 
     const cardsWithBacks = deckData.mainBoard.filter(card => card.back);
