@@ -44,6 +44,11 @@ app.use(express.urlencoded({
 }))
 app.use(express.json());
 
+// home
+app.get('/', (req, res) => {
+  res.send('Nothing to see here...')
+})
+
 // files
 app.get('/files/:fileName', (req, res) => {
   const fileName = req.params['fileName']
@@ -122,7 +127,11 @@ app.get('/magic-json', (req, res) => {
     .then((deckJson) => res.json(deckJson))
     .catch((error) => {
       console.error(error.message);
-      res.status(500).send('Error generating Deck JSON.');
+      if(error.status == 404) {
+        res.status(404).send('Deck requires authentication or not found. Please update the deck to be public');
+      } else {
+        res.status(500).send('Error generating Deck JSON.');
+      }
     });
 });
 
