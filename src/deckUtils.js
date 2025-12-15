@@ -4,9 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const cardCache = path.join(__dirname, '..', 'card-cache.json');
 
-const imageApi = process.env.CARD_IMAGE_API;
+const metadataApi = process.env.CARD_IMAGE_API;
 
-let imageCache = {};
+let metadataCache = {};
 
 async function generateDeckJson(input) {
 
@@ -27,10 +27,9 @@ async function getDeckData(deckUrl) {
 
     const mainBoard = await getMainBoardCards(document)
 
-    const tokens = getTokens(document)
-
     const commander = await getCommander(document)
 
+    const tokens = getTokens(commander ? mainBoard.concat(commander) : mainBoard)
 
     return {
         commander,
@@ -50,7 +49,7 @@ function loadCache() {
                 reject(err);
             } else {
                 try {
-                    imageCache = JSON.parse(data);
+                    metadataCache = JSON.parse(data);
                     resolve();
                 } catch (parseError) {
                     console.error('Error parsing JSON');
@@ -63,10 +62,10 @@ function loadCache() {
 }
 
 
-function addToCache(name, images) {
-    imageCache[name] = images
+function addToCache(name, metadata) {
+    metadataCache[name] = metadata
 
-    fs.writeFile(cardCache, JSON.stringify(imageCache, null, 2), (writeErr) => {
+    fs.writeFile(cardCache, JSON.stringify(metadataCache, null, 2), (writeErr) => {
         if (writeErr) {
             console.error('Error saving card cache.');
         }
@@ -113,51 +112,74 @@ async function createCardObject(card) {
         throw new Error("invalid card data")
     }
 
-    const images = await getCardImages(name)
+    const metadata = await getCardMetadata(name)
 
 
     return {
         name,
         quantity,
-        ...images
+        ...metadata
     };
 }
 
-function imageSearchUrl(cardName) {
+function metadataSearchUrl(cardName) {
 
-    return `${imageApi}${cardName.replace(/ /g, '+')}`
+    return `${metadataApi}${cardName.replace(/ /g, '+')}`
 
 }
 
-function getImagesFromCardData(cardData) {
+async function getMetadataFromCardData(cardData) {
 
-    let images = {}
+    let metadata = {}
 
     if (cardData.card_faces && cardData.card_faces.length > 1 && cardData.card_faces[0].image_uris && cardData.card_faces[1].image_uris) {
-        images.front = cardData.card_faces[0].image_uris.large
-        images.back = cardData.card_faces[1].image_uris.large
+        metadata.front = cardData.card_faces[0].image_uris.large
+        metadata.back = cardData.card_faces[1].image_uris.large
     } else {
-        images.front = cardData.image_uris.large
-        images.back = null
+        metadata.front = cardData.image_uris.large
     }
 
-    return images
+    if (cardData.all_parts) {
+        const tokenParts = cardData.all_parts.filter(part => part.component === "token");
+
+        if (tokenParts.length > 0) {
+            metadata.tokens = [];
+
+            for (const tokenPart of tokenParts) {
+                try {
+                    const tokenResponse = await axios.get(tokenPart.uri);
+                    const tokenData = tokenResponse.data;
+
+                    if (tokenData && tokenData.name && tokenData.image_uris && tokenData.image_uris.large) {
+                        metadata.tokens.push({
+                            name: tokenData.name,
+                            front: tokenData.image_uris.large
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Error fetching token data from ${tokenPart.uri}:`, error);
+                }
+            }
+        }
+    }
+
+    return metadata
 
 }
 
-async function getCardImages(cardName) {
+async function getCardMetadata(cardName) {
 
-    if (imageCache[cardName]) {
-		return imageCache[cardName]
+    if (metadataCache[cardName]) {
+		return metadataCache[cardName]
 	}
 
-    const imageDataResponse = await axios.get(imageSearchUrl(cardName))
+    const metadataDataResponse = await axios.get(metadataSearchUrl(cardName))
 
-    const images = getImagesFromCardData(imageDataResponse.data)
+    const metadata = await getMetadataFromCardData(metadataDataResponse.data)
 
-    addToCache(cardName, images)
+    addToCache(cardName, metadata)
 
-    return images
+    return metadata
 }
 
 async function getCommander(document) {
@@ -204,35 +226,29 @@ async function createCommanderObject(aElement) {
     if (!name) {
         throw new Error("Error getting commander info")
     }
-    const images = await getCardImages(name)
+    const metadata = await getCardMetadata(name)
 
     return {
         name,
-        ...images
+        ...metadata
     }
 }
 
-function getTokens(document) {
+function getTokens(cards) {
 
-    const tokens = []
+    const tokens = [];
 
-    const deckDetails = document.querySelector("#deck-details")
+    cards.forEach(card => {
+        if (card.tokens && Array.isArray(card.tokens)) {
+            card.tokens.forEach(token => {
+                if (!tokens.some(existingToken => existingToken.name === token.name && existingToken.front === token.front)) {
+                    tokens.push(token);
+                }
+            });
+        }
+    });
 
-    const tokenElements = deckDetails?.querySelectorAll(".card-token a")
-
-    if (tokenElements) {
-        tokenElements.forEach(token => {
-
-            const imageUrl = token.getAttribute("data-image").includes("https://") ? token.getAttribute("data-image") : `https:${token.getAttribute("data-image")}`
-            tokens.push({
-                name: token.textContent?.replace(/[\r\n\t]+/g, ' '),
-                front: imageUrl
-            })
-        })
-    }
-
-    return tokens
-
+    return tokens;
 }
 
 
@@ -333,7 +349,7 @@ function convertToTableTop(deckData) {
     }
     deck.ObjectStates.push(createPile(deckData.tokens, pileNumber++, { faceUp: true }));
 
-    const cardsWithBacks = deckData.mainBoard.filter(card => card.back);
+    const cardsWithBacks = deckData.mainBoard.filter(card => card.back !== undefined);
 
     if (cardsWithBacks.length > 0) {
         deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, { faceUp: true, useBack: true }));

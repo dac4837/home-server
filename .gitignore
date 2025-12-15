@@ -49,3 +49,5 @@ santa-client/
 james-messages
 uploads
 card-cache.json
+
+.local-dev
