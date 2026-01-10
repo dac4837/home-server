@@ -255,6 +255,9 @@ function getTokens(cards) {
         }
     });
 
+    // sort tokens alphabetically by name (case-insensitive)
+    tokens.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+
     return tokens;
 }
 
