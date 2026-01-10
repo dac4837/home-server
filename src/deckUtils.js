@@ -39,36 +39,34 @@ async function getDeckData(deckUrl) {
     }
 }
 
-function loadCache() {
-
-    return new Promise((resolve, reject) => {
-
-        fs.readFile(cardCache, 'utf8', (err, data) => {
-
-            if (err) {
-                console.error('Error reading card cache file');
-                reject(err);
-            } else {
-                try {
-                    metadataCache = JSON.parse(data);
-                    resolve();
-                } catch (parseError) {
-                    console.error('Error parsing JSON');
-                    reject();
-                }
+async function loadCache() {
+    try {
+        const data = await fs.promises.readFile(cardCache, 'utf8');
+        metadataCache = JSON.parse(data);
+    } catch (err) {
+        if (err && err.code === 'ENOENT') {
+            // cache file doesn't exist yet — start with empty cache
+            metadataCache = {};
+            try {
+                await fs.promises.writeFile(cardCache, JSON.stringify(metadataCache, null, 2));
+            } catch (writeErr) {
+                console.error('Error creating card cache file:', writeErr);
             }
-        });
+            return;
+        }
 
-    });
+        console.error('Error reading or parsing card cache file:', err);
+        throw err;
+    }
 }
 
 
 function addToCache(name, metadata) {
-    metadataCache[name] = metadata
+    metadataCache[name] = metadata;
 
     fs.writeFile(cardCache, JSON.stringify(metadataCache, null, 2), (writeErr) => {
         if (writeErr) {
-            console.error('Error saving card cache.');
+            console.error('Error saving card cache:', writeErr);
         }
     });
 }
@@ -81,40 +79,36 @@ function getDocumentForHtml(html) {
 async function getMainBoardCards(document) {
     const cardLINodes = document.querySelectorAll('li.member[id^="boardContainer-main"]');
 
-    if (!cardLINodes || !cardLINodes.length) {
-        throw new Error("Cannot find cards")
+    if (!cardLINodes || cardLINodes.length === 0) {
+        throw new Error('Cannot find cards');
     }
 
-    const cardLIs = [];
-    cardLINodes.forEach(card =>
-        cardLIs.push(card)
-    );
-
+    const cardLIs = Array.from(cardLINodes);
     const results = [];
 
     for (const card of cardLIs) {
         const result = await createCardObject(card);
-
         results.push(result);
     }
 
-    return results
+    return results;
 }
 
 async function createCardObject(card) {
     const cardAElement = card.querySelector('a[data-qty]');
 
-    const name = cardAElement.getAttribute('data-name')
-
-    const quantity = parseInt(cardAElement.getAttribute('data-qty'), 10)
-
-
-    if (!cardAElement || !name || !quantity) {
-        throw new Error("invalid card data")
+    if (!cardAElement) {
+        throw new Error('invalid card data');
     }
 
-    const metadata = await getCardMetadata(name)
+    const name = cardAElement.getAttribute('data-name');
+    const quantity = parseInt(cardAElement.getAttribute('data-qty'), 10);
 
+    if (!name || !quantity) {
+        throw new Error('invalid card data');
+    }
+
+    const metadata = await getCardMetadata(name);
 
     return {
         name,
