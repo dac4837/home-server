@@ -27,47 +27,46 @@ async function getDeckData(deckUrl) {
 
     const mainBoard = await getMainBoardCards(document)
 
-    const commander = await getCommander(document)
+    const commanders = await getCommanders(document)
 
-    const tokens = getTokens(commander ? mainBoard.concat(commander) : mainBoard)
+    const allCards = Array.isArray(commanders) && commanders.length ? mainBoard.concat(commanders) : mainBoard;
+    const tokens = getTokens(allCards)
 
     return {
-        commander,
+        commanders,
         mainBoard,
         tokens
     }
 }
 
-function loadCache() {
-
-    return new Promise((resolve, reject) => {
-
-        fs.readFile(cardCache, 'utf8', (err, data) => {
-
-            if (err) {
-                console.error('Error reading card cache file');
-                reject(err);
-            } else {
-                try {
-                    metadataCache = JSON.parse(data);
-                    resolve();
-                } catch (parseError) {
-                    console.error('Error parsing JSON');
-                    reject();
-                }
+async function loadCache() {
+    try {
+        const data = await fs.promises.readFile(cardCache, 'utf8');
+        metadataCache = JSON.parse(data);
+    } catch (err) {
+        if (err && err.code === 'ENOENT') {
+            // cache file doesn't exist yet — start with empty cache
+            metadataCache = {};
+            try {
+                await fs.promises.writeFile(cardCache, JSON.stringify(metadataCache, null, 2));
+            } catch (writeErr) {
+                console.error('Error creating card cache file:', writeErr);
             }
-        });
+            return;
+        }
 
-    });
+        console.error('Error reading or parsing card cache file:', err);
+        throw err;
+    }
 }
 
 
 function addToCache(name, metadata) {
-    metadataCache[name] = metadata
+    metadataCache[name] = metadata;
 
     fs.writeFile(cardCache, JSON.stringify(metadataCache, null, 2), (writeErr) => {
         if (writeErr) {
-            console.error('Error saving card cache.');
+            console.error('Error saving card cache:', writeErr);
         }
     });
 }
@@ -80,40 +79,36 @@ function getDocumentForHtml(html) {
 async function getMainBoardCards(document) {
     const cardLINodes = document.querySelectorAll('li.member[id^="boardContainer-main"]');
 
-    if (!cardLINodes || !cardLINodes.length) {
-        throw new Error("Cannot find cards")
+    if (!cardLINodes || cardLINodes.length === 0) {
+        throw new Error('Cannot find cards');
     }
 
-    const cardLIs = [];
-    cardLINodes.forEach(card =>
-        cardLIs.push(card)
-    );
-
+    const cardLIs = Array.from(cardLINodes);
     const results = [];
 
     for (const card of cardLIs) {
         const result = await createCardObject(card);
-
         results.push(result);
     }
 
-    return results
+    return results;
 }
 
 async function createCardObject(card) {
     const cardAElement = card.querySelector('a[data-qty]');
 
-    const name = cardAElement.getAttribute('data-name')
-
-    const quantity = parseInt(cardAElement.getAttribute('data-qty'), 10)
-
-
-    if (!cardAElement || !name || !quantity) {
-        throw new Error("invalid card data")
+    if (!cardAElement) {
+        throw new Error('invalid card data');
     }
 
-    const metadata = await getCardMetadata(name)
+    const name = cardAElement.getAttribute('data-name');
+    const quantity = parseInt(cardAElement.getAttribute('data-qty'), 10);
 
+    if (!name || !quantity) {
+        throw new Error('invalid card data');
+    }
+
+    const metadata = await getCardMetadata(name);
 
     return {
         name,
@@ -182,34 +177,40 @@ async function getCardMetadata(cardName) {
     return metadata
 }
 
-async function getCommander(document) {
-
-    let commander
+async function getCommanders(document) {
     const h3Elements = document.querySelectorAll("h3");
 
-    let targetA = getCommanderAElement(h3Elements)
+    const aElements = getCommanderAElements(h3Elements);
+    const commanders = [];
 
-    if (targetA) {
-        commander = await createCommanderObject(targetA)
-    } else {
+    for (const a of aElements) {
+        try {
+            const obj = await createCommanderObject(a);
+            if (obj) commanders.push(obj);
+        } catch (err) {
+            console.error('Error creating commander object', err);
+        }
+    }
+
+    if (commanders.length === 0) {
         console.log("No commander card found")
     }
 
-    return commander
-
+    return commanders;
 }
 
-function getCommanderAElement(h3Elements) {
-    let targetA = null;
+function getCommanderAElements(h3Elements) {
+    const results = [];
 
     for (let h3 of h3Elements) {
         if (h3.textContent.includes("Commander")) {
             let next = h3.nextElementSibling;
-            while (next && !targetA) {
-                const aTag = next.querySelector("a");
-                if (aTag) {
-                    targetA = aTag;
-                    break;
+            // walk siblings until we hit another header (next section)
+            while (next && next.tagName !== 'H3') {
+                // collect all anchor elements within this sibling (row may contain multiple commanders)
+                const aTags = next.querySelectorAll("a");
+                if (aTags && aTags.length) {
+                    aTags.forEach(a => results.push(a));
                 }
                 next = next.nextElementSibling;
             }
@@ -217,7 +218,7 @@ function getCommanderAElement(h3Elements) {
         }
     }
 
-    return targetA
+    return results;
 }
 
 async function createCommanderObject(aElement) {
@@ -247,6 +248,9 @@ function getTokens(cards) {
             });
         }
     });
+
+    // sort tokens alphabetically by name (case-insensitive)
+    tokens.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
 
     return tokens;
 }
@@ -300,7 +304,7 @@ function convertToTableTop(deckData) {
         };
     }
 
-    const createPile = (cards, pipeNumber, options = { faceUp: false, useBack: false }) => {
+    const createPile = (cards, pipeNumber, pileName, options = { faceUp: false, useBack: false }) => {
 
         const customDeck = {};
         const containedObjects = []
@@ -324,6 +328,8 @@ function convertToTableTop(deckData) {
 
         return {
             Name: "DeckCustom",
+            Nickname: pileName,
+            Description: pileName,
             ContainedObjects: containedObjects,
             DeckIDs: deckIDs,
             CustomDeck: customDeck,
@@ -331,29 +337,47 @@ function convertToTableTop(deckData) {
         };
     }
 
-    const createSingleCardPipe = (card, pipeNumber) => {
-        const customDeck = createCustomDeckEntry(card, 1);
+    const createSingleCardPipe = (card, pipeNumber, pileName, options = { useBack: false }) => {
+        const customDeck = createCustomDeckEntry(card, 1, options.useBack);
 
         return {
             Name: "Card",
             CustomDeck: customDeck,
             CardID: 100,
             Nickname: card.name,
+            Description: pileName,
             Transform: createTransform(pipeNumber, true)
         };
     }
 
-    deck.ObjectStates.push(createPile(deckData.mainBoard, pileNumber++));
-    if(deckData.commander) {
-        deck.ObjectStates.push(createSingleCardPipe(deckData.commander, pileNumber++));
+    deck.ObjectStates.push(createPile(deckData.mainBoard, pileNumber++, "Mainboard"));
+
+    // Commanders: `deckData.commanders` is an array (may be empty)
+    if (deckData.commanders && Array.isArray(deckData.commanders) && deckData.commanders.length) {
+        if (deckData.commanders.length === 1) {
+            const useBack = deckData.commanders[0].back !== undefined;
+            deck.ObjectStates.push(createSingleCardPipe(deckData.commanders[0], pileNumber++, "Commander", { useBack }));
+        } else {
+            // Group multiple commanders into a single pile named "Commander"
+            // If any commander has a back image, set useBack so backs are used where available
+            const anyHasBack = deckData.commanders.some(c => c.back !== undefined);
+            deck.ObjectStates.push(createPile(deckData.commanders, pileNumber++, "Commander", { faceUp: true, useBack: anyHasBack }));
+        }
     }
-    deck.ObjectStates.push(createPile(deckData.tokens, pileNumber++, { faceUp: true }));
+
+    // Tokens: if only one token, use single card pipe, otherwise a pile
+    if (deckData.tokens && Array.isArray(deckData.tokens) && deckData.tokens.length === 1) {
+        deck.ObjectStates.push(createSingleCardPipe(deckData.tokens[0], pileNumber++, "Tokens"));
+    } else {
+        deck.ObjectStates.push(createPile(deckData.tokens || [], pileNumber++, "Tokens", { faceUp: true }));
+    }
 
     const cardsWithBacks = deckData.mainBoard.filter(card => card.back !== undefined);
 
-    if (cardsWithBacks.length > 0) {
-        deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, { faceUp: true, useBack: true }));
-
+    if (cardsWithBacks.length === 1) {
+        deck.ObjectStates.push(createSingleCardPipe(cardsWithBacks[0], pileNumber++, "Double-sided Cards", { useBack: true }));
+    } else if (cardsWithBacks.length > 1) {
+        deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, "Double-sided Cards", { faceUp: true, useBack: true }));
     }
 
     return deck;

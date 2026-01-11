@@ -1,23 +1,13 @@
 require('dotenv').config()
 const express = require('express')
-const { body, validationResult } = require('express-validator')
+const formidablePkg = require('formidable');
+const formidable = formidablePkg.formidable || formidablePkg.default || formidablePkg;
 const app = express() // create express app
 const path = require('path')
 const redirects = require('../redirects.json')
 const fs = require('fs')
 const fsPromise = require('fs/promises');
-const multer = require('multer')
 const { generateDeckJson } = require('./deckUtils');
-var storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/')
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + path.extname(file.originalname)) //Appending extension
-  }
-})
-const upload = multer({ storage: storage, limits: { fileSize: 20000000 } })
-
 const rootDirectory = path.join(__dirname, '..')
 const clientDirectory = path.join(rootDirectory, 'client')
 const santaClientDirectory = path.join(rootDirectory, 'santa-client')
@@ -68,35 +58,59 @@ app.get('/files/:fileName', (req, res) => {
 })
 
 // upload
-app.post('/uploadfile', upload.single('file'), function (req, res) {
+app.post('/uploadfile', function (req, res) {
+  const form = formidable({
+    multiples: false,
+    maxFileSize: 20 * 1024 * 1024, // 20MB
+    keepExtensions: true,
+    uploadDir: path.join(__dirname, '..', 'uploads')
+  });
 
-  res.sendStatus(200);
+  form.parse(req, async (err, fields, files) => {
+    if (err) {
+      console.error('Upload error:', err);
+      return res.status(400).send('Error uploading file');
+    }
+
+    let file = files.file;
+    if (Array.isArray(file)) file = file[0];
+    if (!file) return res.status(400).send('No file uploaded');
+    const uploadDir = path.join(__dirname, '..', 'uploads');
+    try {
+      const { saveUploadedFile } = require('./uploadUtils');
+      const result = await saveUploadedFile(file, uploadDir);
+      return res.status(200).send({ filename: result.filename });
+    } catch (moveErr) {
+      console.error('Error saving uploaded file:', moveErr);
+      return res.status(500).send('Error saving file');
+    }
+  });
 });
 
 // james messages
-app.post(
-  '/hijames',
-  body('name').isLength({ min: 2 }).withMessage("Please enter a valid name."),
-  body('message').isLength({ min: 5 }).withMessage("Please provide a message."),
-  (req, res) => {
+app.post('/hijames', (req, res) => {
+  const name = req.body && req.body.name;
+  const message = req.body && req.body.message;
 
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      let errorMessage = ""
+  const errors = [];
+  if (!name || typeof name !== 'string' || name.trim().length < 2) {
+    errors.push('Please enter a valid name.');
+  }
+  if (!message || typeof message !== 'string' || message.trim().length < 5) {
+    errors.push('Please provide a message.');
+  }
 
-      errors.array().forEach(error => errorMessage += error.msg + " ")
-      return res.status(400).send(errorMessage)
-    }
+  if (errors.length) {
+    return res.status(400).send(errors.join(' '));
+  }
 
-    saveMessage(req.body.name, req.body.message)
-      .then(() => res.status(201).send())
-      .catch(error => {
-        console.error(error.message)
-        return res.status(500).send("Whoops something went wrong! We couldn't save that message. Click back to continue. Contact David if error persists")
-      });
-
-  },
-);
+  saveMessage(name, message)
+    .then(() => res.status(201).send())
+    .catch(error => {
+      console.error(error && error.message ? error.message : error);
+      return res.status(500).send("Whoops something went wrong! We couldn't save that message. Click back to continue. Contact David if error persists");
+    });
+});
 
 // magic stuff
 
