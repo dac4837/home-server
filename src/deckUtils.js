@@ -329,6 +329,7 @@ function convertToTableTop(deckData) {
         return {
             Name: "DeckCustom",
             Nickname: pileName,
+            Description: pileName,
             ContainedObjects: containedObjects,
             DeckIDs: deckIDs,
             CustomDeck: customDeck,
@@ -343,7 +344,8 @@ function convertToTableTop(deckData) {
             Name: "Card",
             CustomDeck: customDeck,
             CardID: 100,
-            Nickname: pileName,
+            Nickname: card.name,
+            Description: pileName,
             Transform: createTransform(pipeNumber, true)
         };
     }
