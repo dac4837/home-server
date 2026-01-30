@@ -43,6 +43,7 @@ src/index.css
 
 redirects.json
 files/
+magicuploads
 client/
 elves/
 santa-client/
