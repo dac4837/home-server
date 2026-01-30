@@ -39,6 +39,34 @@ async function getDeckData(deckUrl) {
     }
 }
 
+async function generateDeckJsonFromList(cardNames) {
+    await loadCache();
+
+    const cards = []
+    for (const card of cardNames) {
+        const cardObj = await createCardObject(card)
+        if (cardObj) {
+            cards.push(cardObj)
+        }
+    }
+
+    if (cards.length === 0) {
+        throw new Error("No valid cards found in list")
+    }
+
+    const tokens = getTokens(cards)
+
+    const deckData = {
+        commanders: [],
+        mainBoard: cards,
+        tokens
+    }
+
+    const deckJson = convertToTableTop(deckData);
+
+    return deckJson;
+}
+
 async function loadCache() {
     try {
         const data = await fs.promises.readFile(cardCache, 'utf8');
@@ -87,14 +115,14 @@ async function getMainBoardCards(document) {
     const results = [];
 
     for (const card of cardLIs) {
-        const result = await createCardObject(card);
+        const result = await createCardObjectFromHtml(card);
         results.push(result);
     }
 
     return results;
 }
 
-async function createCardObject(card) {
+async function createCardObjectFromHtml(card) {
     const cardAElement = card.querySelector('a[data-qty]');
 
     if (!cardAElement) {
@@ -110,11 +138,23 @@ async function createCardObject(card) {
 
     const metadata = await getCardMetadata(name);
 
+    if(!metadata) {
+        throw new Error('Could not get card data for card: ' + name);
+    }
+
     return {
-        name,
         quantity,
         ...metadata
     };
+}
+
+async function createCardObject(card) {
+    const metadata = await getCardMetadata(card);
+
+    return metadata ? {
+        quantity: 1,
+        ...metadata
+    } : null;
 }
 
 function metadataSearchUrl(cardName) {
@@ -158,6 +198,8 @@ async function getMetadataFromCardData(cardData) {
         }
     }
 
+    metadata.name = cardData.name
+
     return metadata
 
 }
@@ -165,16 +207,35 @@ async function getMetadataFromCardData(cardData) {
 async function getCardMetadata(cardName) {
 
     if (metadataCache[cardName]) {
-		return metadataCache[cardName]
-	}
+        return metadataCache[cardName]
+    }
 
-    const metadataDataResponse = await axios.get(metadataSearchUrl(cardName))
+    try {
 
-    const metadata = await getMetadataFromCardData(metadataDataResponse.data)
+        console.log("Fetching metadata for card:", cardName)
 
-    addToCache(cardName, metadata)
+        const metadataDataResponse = await axios.get(metadataSearchUrl(cardName))
 
-    return metadata
+        const metadata = await getMetadataFromCardData(metadataDataResponse.data)
+
+        addToCache(cardName, metadata)
+
+        if (cardName !== metadata.name) {
+            addToCache(metadata.name, metadata)
+        }
+
+        return metadata
+
+    } catch (err) {
+        if(err.status && err.status === 404) {
+            console.error('Card not found:', cardName)
+            return null
+        } else {
+            //https://scryfall.com/docs/api/bulk-data
+            console.error('Error getting card metadata for', cardName, err)
+            throw err
+        }
+    }
 }
 
 async function getCommanders(document) {
@@ -229,10 +290,11 @@ async function createCommanderObject(aElement) {
     }
     const metadata = await getCardMetadata(name)
 
-    return {
-        name,
-        ...metadata
+    if(!metadata) {
+        throw new Error('Could not get card data for commander: ' + name);
     }
+
+    return metadata
 }
 
 function getTokens(cards) {
@@ -384,5 +446,7 @@ function convertToTableTop(deckData) {
 }
 
 module.exports = {
-    generateDeckJson
+    generateDeckJson,
+    generateDeckJsonFromList
+
 };
