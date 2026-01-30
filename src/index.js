@@ -307,7 +307,6 @@ app.post('/magic-json-from-photo', async (req, res) => {
     }
 
     try {
-      // gather uploaded files: support fields `photo`, `file`, or `image`
       const uploaded = [];
       const photos = files.photo
       if (Array.isArray(photos)) uploaded.push(...photos); else uploaded.push(photos);

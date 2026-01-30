@@ -231,7 +231,6 @@ async function getCardMetadata(cardName) {
             console.error('Card not found:', cardName)
             return null
         } else {
-            //https://scryfall.com/docs/api/bulk-data
             console.error('Error getting card metadata for', cardName, err)
             throw err
         }
