@@ -8,6 +8,35 @@ const metadataApi = process.env.CARD_IMAGE_API;
 
 let metadataCache = {};
 
+// Simple request queue to limit axios GET requests to 10 requests/second
+const REQUEST_QUEUE = [];
+let REQUEST_INTERVAL = null;
+const REQUEST_INTERVAL_MS = parseInt(process.env.METADATA_REQUEST_INTERVAL_MS) || 200; // default 200ms => ~5/sec
+
+function enqueueRequestGet(url, config) {
+    return new Promise((resolve, reject) => {
+        REQUEST_QUEUE.push({ url, config, resolve, reject });
+
+        if (REQUEST_INTERVAL) return;
+
+        REQUEST_INTERVAL = setInterval(async () => {
+            const item = REQUEST_QUEUE.shift();
+            if (!item) {
+                clearInterval(REQUEST_INTERVAL);
+                REQUEST_INTERVAL = null;
+                return;
+            }
+
+            try {
+                const res = await axios.get(item.url, item.config);
+                item.resolve(res);
+            } catch (e) {
+                item.reject(e);
+            }
+        }, REQUEST_INTERVAL_MS);
+    });
+}
+
 async function generateDeckJson(input) {
 
     await loadCache();
@@ -181,19 +210,19 @@ async function getMetadataFromCardData(cardData) {
             metadata.tokens = [];
 
             for (const tokenPart of tokenParts) {
-                try {
-                    const tokenResponse = await axios.get(tokenPart.uri);
-                    const tokenData = tokenResponse.data;
+                    try {
+                        const tokenResponse = await enqueueRequestGet(tokenPart.uri);
+                        const tokenData = tokenResponse.data;
 
-                    if (tokenData && tokenData.name && tokenData.image_uris && tokenData.image_uris.large) {
-                        metadata.tokens.push({
-                            name: tokenData.name,
-                            front: tokenData.image_uris.large
-                        });
+                        if (tokenData && tokenData.name && tokenData.image_uris && tokenData.image_uris.large) {
+                            metadata.tokens.push({
+                                name: tokenData.name,
+                                front: tokenData.image_uris.large
+                            });
+                        }
+                    } catch (error) {
+                        console.error(`Error fetching token data from ${tokenPart.uri}:`, error);
                     }
-                } catch (error) {
-                    console.error(`Error fetching token data from ${tokenPart.uri}:`, error);
-                }
             }
         }
     }
@@ -214,7 +243,7 @@ async function getCardMetadata(cardName) {
 
         console.log("Fetching metadata for card:", cardName)
 
-        const metadataDataResponse = await axios.get(metadataSearchUrl(cardName))
+        const metadataDataResponse = await enqueueRequestGet(metadataSearchUrl(cardName))
 
         const metadata = await getMetadataFromCardData(metadataDataResponse.data)
 
