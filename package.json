@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "start": "node src/index.js --offline",
+    "build-cache": "node build-cache.js",
     "lint": "eslint src --ext .js"
   },
   "dependencies": {
