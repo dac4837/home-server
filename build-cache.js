@@ -9,11 +9,11 @@ const RATE_LIMIT_DELAY_MS = 250;
 const CARD_CACHE_FILE = 'card-cache.json';
 
 const FOREST_URL = 'https://cards.scryfall.io/png/front/e/d/ed22c591-19f4-4096-a08c-5523a26b307c.png?1738799053'
-  const PLAINS_URL = 'https://cards.scryfall.io/png/front/5/d/5d918248-85ff-4fea-ac91-aa5466dd2829.png?1681845990'
-  const SWAMP_URL = 'https://cards.scryfall.io/png/front/a/2/a22f49c5-1dcd-453c-b169-0b2519c44d0c.png?1695483859'
-  const MOUNTAIN_URL = 'https://cards.scryfall.io/png/front/8/a/8a05eb4e-dbea-4d41-939f-b9d92b56f56a.png?1605219735'
-  const ISLAND_URL = 'https://cards.scryfall.io/png/front/9/3/93b0918a-398a-4c6d-a5a9-e35a999b24ae.png?1594958716'
-  const WASTES_URL = 'https://cards.scryfall.io/png/front/7/0/7019912c-bd9b-4b96-9388-400794909aa1.png?1562917413'
+const PLAINS_URL = 'https://cards.scryfall.io/png/front/5/d/5d918248-85ff-4fea-ac91-aa5466dd2829.png?1681845990'
+const SWAMP_URL = 'https://cards.scryfall.io/png/front/a/2/a22f49c5-1dcd-453c-b169-0b2519c44d0c.png?1695483859'
+const MOUNTAIN_URL = 'https://cards.scryfall.io/png/front/8/a/8a05eb4e-dbea-4d41-939f-b9d92b56f56a.png?1605219735'
+const ISLAND_URL = 'https://cards.scryfall.io/png/front/9/3/93b0918a-398a-4c6d-a5a9-e35a999b24ae.png?1594958716'
+const WASTES_URL = 'https://cards.scryfall.io/png/front/7/0/7019912c-bd9b-4b96-9388-400794909aa1.png?1562917413'
 
 async function downloadCardBulkData() {
     const response = await axios.get(CARD_BULK_URL);
@@ -117,7 +117,7 @@ async function saveCacheToFile(data) {
 }
 
 function shouldSkipCard(card) {
-    return !card.type_line || !card.image_status || card.image_status === 'missing' || card.type_line.startsWith('Token') || card.type_line.startsWith('Emblem') || card.layout === 'art_series' || card.set_type === 'minigame' ;
+    return !card.type_line || !card.image_status || card.image_status === 'missing' || card.type_line.startsWith('Token') || card.type_line.startsWith('Emblem') || card.layout === 'art_series' || card.set_type === 'minigame';
 }
 
 async function convertToMetadata(cards) {
