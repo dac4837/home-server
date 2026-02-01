@@ -120,6 +120,21 @@ function shouldSkipCard(card) {
     return !card.type_line || !card.image_status || card.image_status === 'missing' || card.type_line.startsWith('Token') || card.type_line.startsWith('Emblem') || card.layout === 'art_series' || card.set_type === 'minigame';
 }
 
+function addAltNames(metadata, cardMetadata) {
+
+    if(cardMetadata.name.includes(' // ')) {
+        
+        const nameParts = cardMetadata.name.split(' // ');
+
+        for(const part of nameParts) {
+            if(!metadata[part]) {
+                metadata[part] = cardMetadata;
+            }
+        }
+    }
+
+}
+
 async function convertToMetadata(cards) {
 
     const metadata = {};
@@ -132,6 +147,7 @@ async function convertToMetadata(cards) {
         }
         const cardMetadata = await getMetadataFromCardData(card, tokenCache, cards);
         metadata[card.name] = cardMetadata;
+        addAltNames(metadata, cardMetadata);
     }
 
     console.log("Processed", Object.keys(metadata).length, "cards with", Object.keys(tokenCache).length, "unique tokens.");

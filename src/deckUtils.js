@@ -88,11 +88,11 @@ async function loadCache() {
     }
 }
 
-
+// deprecated
 function addToCache(name, metadata) {
     metadataCache[name] = metadata;
 
-    fs.writeFile(cardCache, JSON.stringify(metadataCache, null, 2), (writeErr) => {
+    fs.writeFile(cardCache, JSON.stringify(metadataCache), (writeErr) => {
         if (writeErr) {
             console.error('Error saving card cache:', writeErr);
         }
@@ -218,11 +218,12 @@ async function getCardMetadata(cardName) {
 
         const metadata = await getMetadataFromCardData(metadataDataResponse.data)
 
-        addToCache(cardName, metadata)
+        // don't risk corrupting cache
+        // addToCache(cardName, metadata)
 
-        if (cardName !== metadata.name) {
-            addToCache(metadata.name, metadata)
-        }
+        // if (cardName !== metadata.name) {
+        //     addToCache(metadata.name, metadata)
+        // }
 
         return metadata
 
