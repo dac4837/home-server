@@ -428,7 +428,7 @@ function convertToTableTop(deckData) {
 
     // Tokens: if only one token, use single card pipe, otherwise a pile
     if (deckData.tokens && Array.isArray(deckData.tokens) && deckData.tokens.length === 1) {
-        deck.ObjectStates.push(createSingleCardPipe(deckData.tokens[0], pileNumber++, "Tokens", { faceUp: true, useBack: true }));
+        deck.ObjectStates.push(createSingleCardPipe(deckData.tokens[0], pileNumber++, "Tokens", { useBack: true }));
     } else {
         deck.ObjectStates.push(createPile(deckData.tokens || [], pileNumber++, "Tokens", { faceUp: true, useBack: true }));
     }

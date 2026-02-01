@@ -125,8 +125,6 @@ async function convertToMetadata(cards) {
     const metadata = {};
     const tokenCache = {};
 
-    // let i = 0;
-
     for (const card of cards) {
 
         if (shouldSkipCard(card)) {
@@ -134,10 +132,7 @@ async function convertToMetadata(cards) {
         }
         const cardMetadata = await getMetadataFromCardData(card, tokenCache, cards);
         metadata[card.name] = cardMetadata;
-
-        // if (i++ > 1100) break;
     }
-
 
     console.log("Processed", Object.keys(metadata).length, "cards with", Object.keys(tokenCache).length, "unique tokens.");
 
