@@ -175,7 +175,7 @@ async function getMetadataFromCardData(cardData) {
     }
 
     if (cardData.all_parts) {
-        const tokenParts = cardData.all_parts.filter(part => part.component === "token");
+        const tokenParts = cardData.all_parts.filter(part => part.type_line.startsWith('Token') || part.type_line.startsWith('Emblem'));
 
         if (tokenParts.length > 0) {
             metadata.tokens = [];
@@ -428,9 +428,9 @@ function convertToTableTop(deckData) {
 
     // Tokens: if only one token, use single card pipe, otherwise a pile
     if (deckData.tokens && Array.isArray(deckData.tokens) && deckData.tokens.length === 1) {
-        deck.ObjectStates.push(createSingleCardPipe(deckData.tokens[0], pileNumber++, "Tokens"));
+        deck.ObjectStates.push(createSingleCardPipe(deckData.tokens[0], pileNumber++, "Tokens", { faceUp: true, useBack: true }));
     } else {
-        deck.ObjectStates.push(createPile(deckData.tokens || [], pileNumber++, "Tokens", { faceUp: true }));
+        deck.ObjectStates.push(createPile(deckData.tokens || [], pileNumber++, "Tokens", { faceUp: true, useBack: true }));
     }
 
     const cardsWithBacks = deckData.mainBoard.filter(card => card.back !== undefined);
