@@ -8,15 +8,14 @@ const metadataApi = process.env.CARD_IMAGE_API;
 
 let metadataCache = {};
 
-async function generateDeckJson(input) {
+async function getCardsData(input) {
 
     await loadCache();
 
     const deckData = await getDeckData(input);
 
-    const deckJson = convertToTableTop(deckData);
+    return deckData
 
-    return deckJson;
 }
 
 async function getDeckData(deckUrl) {
@@ -39,7 +38,7 @@ async function getDeckData(deckUrl) {
     }
 }
 
-async function generateDeckJsonFromList(cardNames) {
+async function getCardsDataFromList(cardNames) {
     await loadCache();
 
     const cards = []
@@ -62,9 +61,7 @@ async function generateDeckJsonFromList(cardNames) {
         tokens
     }
 
-    const deckJson = convertToTableTop(deckData);
-
-    return deckJson;
+    return deckData
 }
 
 async function loadCache() {
@@ -218,13 +215,6 @@ async function getCardMetadata(cardName) {
 
         const metadata = await getMetadataFromCardData(metadataDataResponse.data)
 
-        // don't risk corrupting cache
-        // addToCache(cardName, metadata)
-
-        // if (cardName !== metadata.name) {
-        //     addToCache(metadata.name, metadata)
-        // }
-
         return metadata
 
     } catch (err) {
@@ -317,136 +307,8 @@ function getTokens(cards) {
     return tokens;
 }
 
-
-function convertToTableTop(deckData) {
-    const deck = {
-        ObjectStates: []
-    };
-
-    let pileNumber = 0;
-
-    const createContainedObjectsEntry = (card, id) => ({
-        CardID: id,
-        Name: "Card",
-        Nickname: card.name,
-        Transform: {
-            posX: 0,
-            posY: 0,
-            posZ: 0,
-            rotX: 0,
-            rotY: 180,
-            rotZ: 180,
-            scaleX: 1,
-            scaleY: 1,
-            scaleZ: 1
-        }
-    });
-
-    const createCustomDeckEntry = (card, id, useBack = false) => ({
-        [id]: {
-            FaceURL: card.front,
-            BackURL: useBack ? card.back : "https://i.imgur.com/Hg8CwwU.jpeg",
-            NumHeight: 1,
-            NumWidth: 1,
-            BackIsHidden: true
-        }
-    });
-
-    const createTransform = (i, faceup) => {
-        return {
-            posX: i * 2.2,
-            posY: 1,
-            posZ: 0,
-            rotX: 0,
-            rotY: 180,
-            rotZ: faceup ? 0 : 180,
-            scaleX: 1,
-            scaleY: 1,
-            scaleZ: 1
-        };
-    }
-
-    const createPile = (cards, pipeNumber, pileName, options = { faceUp: false, useBack: false }) => {
-
-        const customDeck = {};
-        const containedObjects = []
-
-        let i = 1;
-
-        for (const card of cards) {
-
-            const cardCount = card.quantity || 1;
-
-            for (let j = 0; j < cardCount; j++) {
-                Object.assign(customDeck, createCustomDeckEntry(card, i, options.useBack));
-                containedObjects.push(createContainedObjectsEntry(card, 100 * i));
-                i++;
-            }
-        }
-
-        const deckIDs = containedObjects.map(obj => obj.CardID);
-
-        const transform = createTransform(pipeNumber, options.faceUp);
-
-        return {
-            Name: "DeckCustom",
-            Nickname: pileName,
-            Description: pileName,
-            ContainedObjects: containedObjects,
-            DeckIDs: deckIDs,
-            CustomDeck: customDeck,
-            Transform: transform
-        };
-    }
-
-    const createSingleCardPipe = (card, pipeNumber, pileName, options = { useBack: false }) => {
-        const customDeck = createCustomDeckEntry(card, 1, options.useBack);
-
-        return {
-            Name: "Card",
-            CustomDeck: customDeck,
-            CardID: 100,
-            Nickname: card.name,
-            Description: pileName,
-            Transform: createTransform(pipeNumber, true)
-        };
-    }
-
-    deck.ObjectStates.push(createPile(deckData.mainBoard, pileNumber++, "Mainboard"));
-
-    // Commanders: `deckData.commanders` is an array (may be empty)
-    if (deckData.commanders && Array.isArray(deckData.commanders) && deckData.commanders.length) {
-        if (deckData.commanders.length === 1) {
-            const useBack = deckData.commanders[0].back !== undefined;
-            deck.ObjectStates.push(createSingleCardPipe(deckData.commanders[0], pileNumber++, "Commander", { useBack }));
-        } else {
-            // Group multiple commanders into a single pile named "Commander"
-            // If any commander has a back image, set useBack so backs are used where available
-            const anyHasBack = deckData.commanders.some(c => c.back !== undefined);
-            deck.ObjectStates.push(createPile(deckData.commanders, pileNumber++, "Commander", { faceUp: true, useBack: anyHasBack }));
-        }
-    }
-
-    // Tokens: if only one token, use single card pipe, otherwise a pile
-    if (deckData.tokens && Array.isArray(deckData.tokens) && deckData.tokens.length === 1) {
-        deck.ObjectStates.push(createSingleCardPipe(deckData.tokens[0], pileNumber++, "Tokens", { useBack: true }));
-    } else {
-        deck.ObjectStates.push(createPile(deckData.tokens || [], pileNumber++, "Tokens", { faceUp: true, useBack: true }));
-    }
-
-    const cardsWithBacks = deckData.mainBoard.filter(card => card.back !== undefined);
-
-    if (cardsWithBacks.length === 1) {
-        deck.ObjectStates.push(createSingleCardPipe(cardsWithBacks[0], pileNumber++, "Double-sided Cards", { useBack: true }));
-    } else if (cardsWithBacks.length > 1) {
-        deck.ObjectStates.push(createPile(cardsWithBacks, pileNumber++, "Double-sided Cards", { faceUp: true, useBack: true }));
-    }
-
-    return deck;
-}
-
 module.exports = {
-    generateDeckJson,
-    generateDeckJsonFromList
+    getCardsData,
+    getCardsDataFromList
 
 };

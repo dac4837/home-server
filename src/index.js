@@ -8,7 +8,7 @@ const path = require('path')
 const redirects = require('../redirects.json')
 const fs = require('fs')
 const fsPromise = require('fs/promises');
-const { generateDeckJson, generateDeckJsonFromList } = require('./deckUtils');
+const { getCardsData, getCardsDataFromList } = require('./deckUtils');
 const { saveUploadedFile } = require('./uploadUtils');
 const rootDirectory = path.join(__dirname, '..')
 const clientDirectory = path.join(rootDirectory, 'client')
@@ -247,8 +247,7 @@ async function parseCardTitlesFromImage(base64Images) {
   }
 }
 
-
-app.get('/magic-json', (req, res) => {
+app.get('/magic-cards-json', (req, res) => {
   const deckUrl = req.query.deckUrl;
 
   const deckBase = `${deckUrlRoot}/mtg-decks`;
@@ -261,7 +260,7 @@ app.get('/magic-json', (req, res) => {
     return res.status(400).send(`Invalid deckUrl. It must be a valid URL starting with ${deckBase}`);
   }
 
-  generateDeckJson(deckUrl)
+  getCardsData(deckUrl)
     .then((deckJson) => res.json(deckJson))
     .catch((error) => {
       console.error(error.message);
@@ -273,26 +272,8 @@ app.get('/magic-json', (req, res) => {
     });
 });
 
-app.post('/magic-json-from-list', async (req, res) => {
-
-  const cardNames = req.body
-
-  if (!Array.isArray(cardNames) || cardNames.length === 0 || !cardNames.every(name => typeof name === 'string' && name.trim().length > 0)) {
-    return res.status(400).send('Invalid input. cardNames must be a non-empty array of strings.');
-  }
-
-  try {
-    const deckJson = await generateDeckJsonFromList(cardNames);
-    return res.json(deckJson);
-  } catch (error) {
-    console.error('Error generating Deck JSON from list:', error);
-    return res.status(500).send('Error generating Deck JSON from list.');
-  }
-
-})
-
-//https://ai.google.dev/gemini-api/docs/quickstart
-app.post('/magic-json-from-photo', async (req, res) => {
+// Shared handler for processing uploaded photos and generating deck JSON
+async function handleMagicPhotoRequest(req, res, deckGenerator) {
   const form = formidable({
     multiples: true,
     maxFileSize: 20 * 1024 * 1024, // 20MB total
@@ -306,10 +287,13 @@ app.post('/magic-json-from-photo', async (req, res) => {
       return res.status(400).json({ error: 'Invalid upload' });
     }
 
+    let savedPaths = [];
+
     try {
       const uploaded = [];
-      const photos = files.photo
-      if (Array.isArray(photos)) uploaded.push(...photos); else uploaded.push(photos);
+      const photos = files.photo;
+      if (Array.isArray(photos)) uploaded.push(...photos);
+      else if (photos) uploaded.push(photos);
 
       if (uploaded.length === 0) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -320,10 +304,9 @@ app.post('/magic-json-from-photo', async (req, res) => {
       }
 
       const base64Images = [];
-      savedPaths = [];
 
       for (const f of uploaded) {
-        const srcPath = f.filepath
+        const srcPath = f.filepath;
         if (!srcPath || !isImage(srcPath)) {
           // cleanup all previously saved
           await Promise.all(savedPaths.map(p => deleteUploadedFile(p).catch(() => { })));
@@ -347,8 +330,7 @@ app.post('/magic-json-from-photo', async (req, res) => {
 
       let deckJson = null;
       if (cards && Array.isArray(cards) && cards.length > 0) {
-
-        deckJson = await generateDeckJsonFromList(cards);
+        deckJson = await deckGenerator(cards);
       }
 
       return res.json({ message, deckJson, cards });
@@ -362,6 +344,11 @@ app.post('/magic-json-from-photo', async (req, res) => {
       return res.status(500).json({ error: 'Failed to process image.' });
     }
   });
+}
+
+//https://ai.google.dev/gemini-api/docs/quickstart
+app.post('/magic-deck-json-from-photo', async (req, res) => {
+  return handleMagicPhotoRequest(req, res, getCardsDataFromList);
 });
 
 
