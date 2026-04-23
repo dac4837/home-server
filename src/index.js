@@ -66,7 +66,6 @@ const jwks = jwksClient({
 });
 
 const authenticateToken = (req, res, next) => {
-  console.log('Authenticating request for', req.path);
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
