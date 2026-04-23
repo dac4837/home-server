@@ -10,6 +10,8 @@ const fs = require('fs')
 const fsPromise = require('fs/promises');
 const { getCardsData, getCardsDataFromList } = require('./deckUtils');
 const { saveUploadedFile } = require('./uploadUtils');
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
 const rootDirectory = path.join(__dirname, '..')
 const clientDirectory = path.join(rootDirectory, 'client')
 const santaClientDirectory = path.join(rootDirectory, 'santa-client')
@@ -21,7 +23,11 @@ const AI_MODEL_NAME = process.env.AI_MODEL_NAME || "gemini-2.5-flash" //https://
 const AI_TEMERATURE = parseFloat(process.env.AI_TEMPERATURE) || 1
 const AI_MAX_OUTPUT_TOKENS = parseInt(process.env.AI_MAX_OUTPUT_TOKENS) || 5000
 const AI_TOP_P = parseFloat(process.env.AI_TOP_P) || 0.95
-
+const CLIENT_ID = process.env.CLIENT_ID
+const ALLOWED_USERS = process.env.ALLOWED_USERS ? process.env.ALLOWED_USERS.split(',').map(u => u.trim().toLowerCase()) : []
+const JWKS_URI = 'https://login.microsoftonline.com/common/discovery/v2.0/keys';
+const JWT_ISSUER = 'https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0';
+const SECURE_FILES_DIR = "securefiles"
 
 const INVALID_FILE_CHARACTERS = ['..', '/', '\\', '<', '>', '&']
 const SUPPORTED_IMAGES = {
@@ -53,12 +59,131 @@ app.use(express.urlencoded({
 }))
 app.use(express.json());
 
+// Authentication middleware
+// Validates JWT token signature and claims using public keys for consumer accounts
+const jwks = jwksClient({
+  jwksUri: JWKS_URI
+});
+
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(403).json({ error: 'Access denied. No token provided.' });
+  }
+
+  try {
+    // Decode without verification to get the kid from header
+    const decoded = jwt.decode(token, { complete: true });
+    if (!decoded || !decoded.header.kid) {
+      return res.status(403).json({ error: 'Invalid token.' });
+    }
+
+    const kid = decoded.header.kid;
+    
+    // Get the signing key
+    jwks.getSigningKey(kid, (err, key) => {
+      if (err) {
+        return res.status(403).json({ error: 'Token verification failed.' });
+      }
+
+      // Verify the token signature and claims
+      jwt.verify(token, key.getPublicKey(), {
+        audience: CLIENT_ID,
+        issuer: JWT_ISSUER
+      }, (err, decoded) => {
+        if (err) {
+          return res.status(403).json({ error: 'Invalid or expired token.' });
+        }
+        
+        // Check if user is in allowed users list
+        const userEmail = decoded.preferred_username ? decoded.preferred_username.toLowerCase() : null;
+        if (!userEmail || !ALLOWED_USERS.includes(userEmail)) {
+          console.error('Unauthorized access attempt:', { email: userEmail, name: decoded.name});
+          return res.status(403).json({ error: 'Access denied. User not authorized.' });
+        }
+        
+        req.user = decoded;
+        next();
+      });
+    });
+  } catch (error) {
+    return res.status(403).json({ error: 'Authentication failed.' });
+  }
+};
+
 // home
 app.get('/', (req, res) => {
   res.send('Nothing to see here...')
 })
 
+// Recursive function to build directory structure
+async function buildDirectoryTree(dirPath, relativePath = '') {
+  try {
+    const entries = await fsPromise.readdir(dirPath, { withFileTypes: true });
+    const result = [];
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      const relPath = relativePath ? path.join(relativePath, entry.name) : entry.name;
+
+      if (entry.isDirectory()) {
+        const children = await buildDirectoryTree(fullPath, relPath);
+        result.push({
+          name: entry.name,
+          type: 'folder',
+          path: relPath,
+          children
+        });
+      } else {
+        result.push({
+          name: entry.name,
+          type: 'file',
+          path: relPath
+        });
+      }
+    }
+
+    return result;
+  } catch (err) {
+    console.error('Error building directory tree:', err);
+    return [];
+  }
+}
+
 // files
+app.get('/api/listfiles', authenticateToken, async (req, res) => {
+  const filesDir = path.join(__dirname, '..', SECURE_FILES_DIR);
+  try {
+    const tree = await buildDirectoryTree(filesDir);
+    res.json(tree);
+  } catch (err) {
+    res.status(500).json({ error: 'Error reading files directory' });
+  }
+});
+
+app.get('/api/securefiles', authenticateToken, (req, res) => {
+  const filePath = req.query.path;
+
+  if (!filePath) {
+    res.status(400).send('Missing path query parameter');
+  }
+
+  if (!isFilePathClean(filePath)) {
+    res.status(400).send('Bad file path');
+  }
+
+  const fullPath = path.join(__dirname, '..', SECURE_FILES_DIR, filePath);
+  fs.access(fullPath, fs.constants.F_OK, (err) => {
+    if (err) {
+      res.status(404).send('File not found');
+    } else {
+      res.download(fullPath);
+    }
+  });
+});
+
 app.get('/files/:fileName', (req, res) => {
   const fileName = req.params['fileName']
 
@@ -77,7 +202,7 @@ app.get('/files/:fileName', (req, res) => {
 })
 
 // upload
-app.post('/uploadfile', function (req, res) {
+app.post('/api/uploadfile', function (req, res) {
   const form = formidable({
     multiples: false,
     maxFileSize: 100 * 1024 * 1024, // 100MB
@@ -107,7 +232,7 @@ app.post('/uploadfile', function (req, res) {
 });
 
 // james messages
-app.post('/hijames', (req, res) => {
+app.post('/api/hijames', (req, res) => {
   const name = req.body && req.body.name;
   const message = req.body && req.body.message;
 
@@ -247,7 +372,7 @@ async function parseCardTitlesFromImage(base64Images) {
   }
 }
 
-app.get('/magic-cards-json', (req, res) => {
+app.get('/api/magic-cards-json', (req, res) => {
   const deckUrl = req.query.deckUrl;
 
   const deckBase = `${deckUrlRoot}/mtg-decks`;
@@ -347,7 +472,7 @@ async function handleMagicPhotoRequest(req, res, deckGenerator) {
 }
 
 //https://ai.google.dev/gemini-api/docs/quickstart
-app.post('/magic-deck-json-from-photo', async (req, res) => {
+app.post('/api/magic-deck-json-from-photo', async (req, res) => {
   return handleMagicPhotoRequest(req, res, getCardsDataFromList);
 });
 
