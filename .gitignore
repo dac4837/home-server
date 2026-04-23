@@ -43,6 +43,7 @@ src/index.css
 
 redirects.json
 files/
+securefiles/
 magicuploads
 client/
 elves/
