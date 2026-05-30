@@ -170,7 +170,7 @@ app.get('/api/securefiles', authenticateToken, (req, res) => {
     res.status(400).send('Missing path query parameter');
   }
 
-  if (!isFilePathClean(filePath)) {
+  if (!isSecureFilePath(filePath)) {
     res.status(400).send('Bad file path');
   }
 
@@ -607,6 +607,19 @@ function isFilePathClean(filePath) {
   })
 
   return isValid
+}
+
+function isSecureFilePath(filePath) {
+  if (!filePath) return false
+
+  // For nested file paths, reject dangerous patterns but allow forward slashes
+  const dangerousPatterns = ['..', '\\', '<', '>', '&']
+  
+  for (const pattern of dangerousPatterns) {
+    if (filePath.includes(pattern)) return false
+  }
+
+  return true
 }
 
 function saveMessage(author, message) {
