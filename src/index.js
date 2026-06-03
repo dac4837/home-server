@@ -205,7 +205,7 @@ app.get('/files/:fileName', (req, res) => {
 app.post('/api/uploadfile', function (req, res) {
   const form = formidable({
     multiples: false,
-    maxFileSize: 100 * 1024 * 1024, // 100MB
+    maxFileSize: 2000 * 1024 * 1024, // 2000MB
     keepExtensions: true,
     uploadDir: path.join(__dirname, '..', 'uploads')
   });
